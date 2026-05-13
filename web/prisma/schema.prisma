@@ -1,0 +1,61 @@
+// Marketing AI — Prisma schema
+//
+// SQLite-backed for local dev. Stores connected Business records and
+// the analyses that have been run against them. The full structured
+// AnalysisResult is serialised as JSON into `payload`; a few fields are
+// denormalised onto the Analysis row itself for fast list rendering
+// (timestamps, token counts, summary preview, recommendation count).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// A business that exposes the /v1/external/* contract. Phase 1.C
+/// auto-bootstraps a single row from RESTORA_API_BASE / RESTORA_API_KEY
+/// env vars; Phase 1.D will replace that with an onboarding form so
+/// multiple businesses can be connected.
+model Business {
+  id        String   @id @default(cuid())
+  /// Cached display name from the most recent /business/profile call.
+  name      String
+  /// Base URL including the /v1/external segment, no trailing slash.
+  baseUrl   String   @unique
+  /// Plaintext API key for now. Encryption-at-rest is a separate phase
+  /// (needs envelope-encryption with a master key).
+  apiKey    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  analyses Analysis[]
+}
+
+/// One row per successful analysis run. The full AnalysisResult JSON
+/// lives in `payload` so we never need migrations when the result
+/// shape changes. Top-level columns are for indexed listing.
+model Analysis {
+  id                  String   @id @default(cuid())
+  businessId          String
+  /// Time the model finished writing the audit (from AnalysisResult.generatedAt).
+  generatedAt         DateTime
+  model               String
+  /// First ~500 chars of the exec summary, for list rendering without
+  /// parsing the full payload.
+  summary             String
+  recommendationCount Int
+  inputTokens         Int
+  outputTokens        Int
+  cacheReadTokens     Int
+  cacheWriteTokens    Int
+  /// JSON-serialised AnalysisResult. Read with JSON.parse() at the edge.
+  payload             String
+  createdAt           DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id])
+
+  @@index([businessId, createdAt])
+}

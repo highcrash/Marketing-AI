@@ -32,3 +32,9 @@ yarn-debug.log*
 # Test / scratch
 .scratch/
 tmp/
+
+# SQLite (Prisma dev DB)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
