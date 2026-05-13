@@ -3,6 +3,7 @@
 import { useState } from 'react';
 
 import { AnalysisView } from './AnalysisView';
+import { OperationalStatsCard } from './OperationalStatsCard';
 import type { AnalysisResult } from '@/lib/ai/analyze';
 import type { AnalysisListItem, DraftsByRecIndex } from '@/lib/analyses';
 import type { DraftRow } from '@/lib/drafts';
@@ -299,6 +300,8 @@ export function AnalysisDashboard({
             </p>
           </div>
         )}
+
+        <OperationalStatsCard refreshKey={activityRefreshKey} />
 
         <div>
           <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2 px-1">
