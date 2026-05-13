@@ -15,6 +15,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Single-user account (Auth.js credentials provider). Phase 1.E ships
+/// a lockdown gate: only the FIRST register call succeeds; subsequent
+/// registrations get a 403. Multi-user support would change the
+/// Business ↔ User relationship; for now there's exactly one User and
+/// they own everything.
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 /// A business that exposes the /v1/external/* contract. Phase 1.C
 /// auto-bootstraps a single row from RESTORA_API_BASE / RESTORA_API_KEY
 /// env vars; Phase 1.D will replace that with an onboarding form so

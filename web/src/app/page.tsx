@@ -1,4 +1,5 @@
 import { AnalysisDashboard } from '@/components/AnalysisDashboard';
+import { HeaderUser } from '@/components/HeaderUser';
 import { getOrCreateBusinessFromEnv } from '@/lib/business';
 import { getLatestAnalysis, listAnalyses } from '@/lib/analyses';
 
@@ -28,19 +29,22 @@ export default async function Home() {
     <main className="min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-50">
       <header className="border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
         <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex items-baseline justify-between">
+          <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs uppercase tracking-widest text-red-600 font-medium mb-1">
-                Marketing AI · Phase 1.C
+                Marketing AI
               </p>
               <h1 className="text-2xl font-semibold">
                 {bootstrap.ok ? bootstrap.businessName : 'Marketing AI'}
               </h1>
             </div>
-            <p className="text-xs text-zinc-500 max-w-md text-right">
-              Read-only analyst. Pulls business data from your connected endpoint and produces grounded,
-              prioritized recommendations.
-            </p>
+            <div className="flex flex-col items-end gap-3">
+              <HeaderUser />
+              <p className="text-xs text-zinc-500 max-w-md text-right hidden md:block">
+                AI marketing analyst — pulls business data, drafts campaigns, sends through your
+                connected channels.
+              </p>
+            </div>
           </div>
         </div>
       </header>
