@@ -1,10 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { Copy, Sparkles, X } from 'lucide-react';
+import { Check, Copy, RotateCcw, Sparkles, X } from 'lucide-react';
 
 import type { DraftPiece } from '@/lib/ai/draft';
 import type { DraftRow } from '@/lib/drafts';
+
+const STATUS_STYLES: Record<string, { label: string; pill: string }> = {
+  PENDING_REVIEW: { label: 'Draft', pill: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300' },
+  APPROVED: { label: 'Approved', pill: 'bg-emerald-600 text-white' },
+  REJECTED: { label: 'Rejected', pill: 'bg-amber-600 text-white' },
+};
 
 const CHANNEL_LABEL: Record<string, string> = {
   sms: 'SMS',
@@ -39,11 +45,15 @@ function channelLabel(c: string): string {
 export function DraftView({
   draft,
   isRefining,
+  isUpdatingStatus,
   onRefine,
+  onSetStatus,
 }: {
   draft: DraftRow;
   isRefining: boolean;
+  isUpdatingStatus: boolean;
   onRefine: (feedback: string) => void;
+  onSetStatus: (status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED') => void;
 }) {
   const payload = draft.payload;
   const [showRefineForm, setShowRefineForm] = useState(false);
@@ -61,8 +71,18 @@ export function DraftView({
     <div className="border border-red-300 dark:border-red-900 bg-red-50/40 dark:bg-red-950/20 p-5 mt-3 space-y-5">
       <header>
         <div className="flex items-baseline justify-between gap-2 flex-wrap">
-          <h6 className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-            Campaign draft · {payload.title}
+          <h6 className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2 flex-wrap">
+            <span>Campaign draft · {payload.title}</span>
+            {(() => {
+              const style = STATUS_STYLES[draft.status] ?? STATUS_STYLES.PENDING_REVIEW;
+              return (
+                <span
+                  className={`text-[10px] uppercase tracking-widest font-medium px-2 py-0.5 ${style.pill}`}
+                >
+                  {style.label}
+                </span>
+              );
+            })()}
             {draft.versionCount > 1 && (
               <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
                 v{draft.version} of {draft.versionCount}
@@ -217,14 +237,46 @@ export function DraftView({
             </div>
           </div>
         ) : (
-          <button
-            onClick={() => setShowRefineForm(true)}
-            disabled={isRefining}
-            className="text-[10px] tracking-widest uppercase text-red-600 hover:text-red-700 disabled:text-zinc-400 inline-flex items-center gap-1"
-          >
-            <Sparkles size={11} />
-            {isRefining ? 'Refining…' : 'Refine with feedback'}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setShowRefineForm(true)}
+              disabled={isRefining || isUpdatingStatus}
+              className="text-[10px] tracking-widest uppercase text-red-600 hover:text-red-700 disabled:text-zinc-400 inline-flex items-center gap-1 mr-auto"
+            >
+              <Sparkles size={11} />
+              {isRefining ? 'Refining…' : 'Refine with feedback'}
+            </button>
+
+            {draft.status === 'PENDING_REVIEW' ? (
+              <>
+                <button
+                  onClick={() => onSetStatus('REJECTED')}
+                  disabled={isUpdatingStatus || isRefining}
+                  className="text-[10px] tracking-widest uppercase text-zinc-600 dark:text-zinc-400 hover:text-amber-600 disabled:text-zinc-400 inline-flex items-center gap-1 px-2 py-1 border border-zinc-200 dark:border-zinc-800 hover:border-amber-600"
+                >
+                  <X size={11} />
+                  Reject
+                </button>
+                <button
+                  onClick={() => onSetStatus('APPROVED')}
+                  disabled={isUpdatingStatus || isRefining}
+                  className="text-[10px] tracking-widest uppercase text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-300 disabled:text-zinc-500 inline-flex items-center gap-1 px-2 py-1"
+                >
+                  <Check size={11} />
+                  {isUpdatingStatus ? 'Saving…' : 'Approve'}
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => onSetStatus('PENDING_REVIEW')}
+                disabled={isUpdatingStatus || isRefining}
+                className="text-[10px] tracking-widest uppercase text-zinc-600 dark:text-zinc-400 hover:text-red-600 disabled:text-zinc-400 inline-flex items-center gap-1 px-2 py-1 border border-zinc-200 dark:border-zinc-800 hover:border-red-600"
+              >
+                <RotateCcw size={11} />
+                {isUpdatingStatus ? 'Saving…' : 'Re-open'}
+              </button>
+            )}
+          </div>
         )}
       </footer>
     </div>

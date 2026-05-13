@@ -30,6 +30,7 @@ export function AnalysisDashboard({
   const [draftingIndex, setDraftingIndex] = useState<number | null>(null);
   const [draftError, setDraftError] = useState<{ recIndex: number; message: string } | null>(null);
   const [refiningDraftId, setRefiningDraftId] = useState<string | null>(null);
+  const [updatingStatusDraftId, setUpdatingStatusDraftId] = useState<string | null>(null);
 
   async function runAnalysis() {
     setStatus('running');
@@ -112,6 +113,43 @@ export function AnalysisDashboard({
       });
     } finally {
       setDraftingIndex(null);
+    }
+  }
+
+  async function setDraftStatus(
+    draftId: string,
+    status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED',
+  ) {
+    if (!current || updatingStatusDraftId !== null) return;
+    setUpdatingStatusDraftId(draftId);
+    setDraftError(null);
+    try {
+      const res = await fetch(`/api/drafts/${encodeURIComponent(draftId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      const body = (await res.json()) as
+        | { draft: DraftRow }
+        | { error: string; message: string };
+      if (!res.ok || 'error' in body) {
+        throw new Error('message' in body ? body.message : `HTTP ${res.status}`);
+      }
+      setCurrent((prev) =>
+        prev
+          ? {
+              ...prev,
+              drafts: { ...prev.drafts, [body.draft.recIndex]: body.draft },
+            }
+          : prev,
+      );
+    } catch (err: unknown) {
+      setDraftError({
+        recIndex: -1,
+        message: err instanceof Error ? err.message : 'unknown error',
+      });
+    } finally {
+      setUpdatingStatusDraftId(null);
     }
   }
 
@@ -244,8 +282,10 @@ export function AnalysisDashboard({
             drafts={current.drafts}
             draftingIndex={draftingIndex}
             refiningDraftId={refiningDraftId}
+            updatingStatusDraftId={updatingStatusDraftId}
             onDraft={draftRec}
             onRefine={refineDraft}
+            onSetStatus={setDraftStatus}
           />
         ) : status !== 'running' ? (
           <div className="border border-dashed border-zinc-300 dark:border-zinc-800 p-12 text-center text-zinc-500">

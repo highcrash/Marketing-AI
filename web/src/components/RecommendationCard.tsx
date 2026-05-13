@@ -15,15 +15,19 @@ export function RecommendationCard({
   draft,
   isDrafting,
   isRefining,
+  isUpdatingStatus,
   onDraft,
   onRefine,
+  onSetStatus,
 }: {
   rec: Recommendation;
   draft: DraftRow | undefined;
   isDrafting: boolean;
   isRefining: boolean;
+  isUpdatingStatus: boolean;
   onDraft: () => void;
   onRefine: (feedback: string) => void;
+  onSetStatus: (status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED') => void;
 }) {
   return (
     <article className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-5">
@@ -101,7 +105,15 @@ export function RecommendationCard({
         </div>
       </footer>
 
-      {draft && <DraftView draft={draft} isRefining={isRefining} onRefine={onRefine} />}
+      {draft && (
+        <DraftView
+          draft={draft}
+          isRefining={isRefining}
+          isUpdatingStatus={isUpdatingStatus}
+          onRefine={onRefine}
+          onSetStatus={onSetStatus}
+        />
+      )}
     </article>
   );
 }

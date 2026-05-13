@@ -24,8 +24,10 @@ interface AnalysisViewProps {
   drafts: DraftsByRecIndex;
   draftingIndex: number | null;
   refiningDraftId: string | null;
+  updatingStatusDraftId: string | null;
   onDraft: (recIndex: number) => void;
   onRefine: (draftId: string, feedback: string) => void;
+  onSetStatus: (draftId: string, status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED') => void;
 }
 
 export function AnalysisView({
@@ -33,8 +35,10 @@ export function AnalysisView({
   drafts,
   draftingIndex,
   refiningDraftId,
+  updatingStatusDraftId,
   onDraft,
   onRefine,
+  onSetStatus,
 }: AnalysisViewProps) {
   // Keep recommendations in their original order so recIndex matches the
   // canonical position on the saved Analysis row (drafts reference recs by
@@ -103,8 +107,10 @@ export function AnalysisView({
                     draft={draft}
                     isDrafting={draftingIndex === recIndex}
                     isRefining={!!draft && refiningDraftId === draft.id}
+                    isUpdatingStatus={!!draft && updatingStatusDraftId === draft.id}
                     onDraft={() => onDraft(recIndex)}
                     onRefine={(feedback) => draft && onRefine(draft.id, feedback)}
+                    onSetStatus={(status) => draft && onSetStatus(draft.id, status)}
                   />
                 );
               })}
