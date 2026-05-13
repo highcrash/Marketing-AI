@@ -12,8 +12,8 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { RestoraClient } from '../restora-client.js';
-import { DEFAULT_AUDIT_SKILLS, loadSkillsBySlug, type Skill } from './skills.js';
+import { RestoraClient } from '../restora-client';
+import { DEFAULT_AUDIT_SKILLS, loadSkillsBySlug, type Skill } from './skills';
 
 export interface AnalysisOptions {
   model?: string;

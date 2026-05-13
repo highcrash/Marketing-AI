@@ -14,8 +14,8 @@ import { resolve } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 
-import { RestoraClient } from '../src/lib/restora-client.js';
-import { runAnalysis, type Recommendation } from '../src/lib/ai/analyze.js';
+import { RestoraClient } from '../src/lib/restora-client';
+import { runAnalysis, type Recommendation } from '../src/lib/ai/analyze';
 
 // Tiny .env loader — avoids dragging in dotenv. We only need it in the CLI;
 // Next.js loads .env automatically for the server side.
