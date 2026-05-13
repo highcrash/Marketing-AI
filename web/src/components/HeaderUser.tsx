@@ -1,7 +1,8 @@
 'use client';
 
 import { signOut, useSession } from 'next-auth/react';
-import { LogOut } from 'lucide-react';
+import { Calendar, LogOut } from 'lucide-react';
+import Link from 'next/link';
 
 export function HeaderUser() {
   const { data: session, status } = useSession();
@@ -9,6 +10,14 @@ export function HeaderUser() {
   if (!session?.user) return null;
   return (
     <div className="flex items-center gap-2 text-[11px] text-zinc-500">
+      <Link
+        href="/schedules"
+        className="inline-flex items-center gap-1 px-2 py-1 border border-zinc-200 dark:border-zinc-800 hover:border-blue-600 hover:text-blue-600"
+        title="View all schedules"
+      >
+        <Calendar size={11} />
+        Schedules
+      </Link>
       <span className="hidden sm:inline">{session.user.email}</span>
       <button
         onClick={() => signOut({ callbackUrl: '/login' })}
