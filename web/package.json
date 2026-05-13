@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "^0.96.0",
     "@prisma/client": "^6.19.3",
     "gray-matter": "^4.0.3",
+    "lucide-react": "^1.14.0",
     "next": "16.2.6",
     "prisma": "^6.19.3",
     "react": "19.2.4",

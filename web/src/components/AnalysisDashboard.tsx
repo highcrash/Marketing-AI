@@ -4,13 +4,15 @@ import { useState } from 'react';
 
 import { AnalysisView } from './AnalysisView';
 import type { AnalysisResult } from '@/lib/ai/analyze';
-import type { AnalysisListItem } from '@/lib/analyses';
+import type { AnalysisListItem, DraftsByRecIndex } from '@/lib/analyses';
+import type { DraftRow } from '@/lib/drafts';
 
 type Status = 'idle' | 'running' | 'error';
 
 interface Current {
   id: string;
   result: AnalysisResult;
+  drafts: DraftsByRecIndex;
 }
 
 export function AnalysisDashboard({
@@ -25,12 +27,13 @@ export function AnalysisDashboard({
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [draftingIndex, setDraftingIndex] = useState<number | null>(null);
+  const [draftError, setDraftError] = useState<{ recIndex: number; message: string } | null>(null);
 
   async function runAnalysis() {
     setStatus('running');
     setError(null);
     setElapsedMs(0);
-
     const t0 = Date.now();
     const tick = setInterval(() => setElapsedMs(Date.now() - t0), 500);
 
@@ -44,10 +47,10 @@ export function AnalysisDashboard({
         throw new Error('message' in body ? body.message : `HTTP ${res.status}`);
       }
 
-      setCurrent({ id: body.id, result: body.result });
+      // Fresh analysis means no drafts yet.
+      setCurrent({ id: body.id, result: body.result, drafts: {} });
       setStatus('idle');
 
-      // Refresh the past-runs list so the new run appears at the top.
       const listRes = await fetch('/api/analyses');
       if (listRes.ok) {
         const listBody = (await listRes.json()) as { items: AnalysisListItem[] };
@@ -66,12 +69,48 @@ export function AnalysisDashboard({
     try {
       const res = await fetch(`/api/analyses/${id}`);
       const body = (await res.json()) as
-        | { id: string; result: AnalysisResult }
+        | { id: string; result: AnalysisResult; drafts: DraftsByRecIndex }
         | { error: string };
       if (!res.ok || 'error' in body) return;
-      setCurrent({ id: body.id, result: body.result });
+      setCurrent({ id: body.id, result: body.result, drafts: body.drafts });
     } catch {
-      // swallow — list rows that fail to load just stay un-selected
+      // Swallow — list rows that fail just stay un-selected.
+    }
+  }
+
+  async function draftRec(recIndex: number) {
+    if (!current || draftingIndex !== null) return;
+    setDraftingIndex(recIndex);
+    setDraftError(null);
+    try {
+      const res = await fetch('/api/drafts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ analysisId: current.id, recIndex }),
+      });
+      const body = (await res.json()) as
+        | { draft: DraftRow }
+        | { error: string; message: string };
+
+      if (!res.ok || 'error' in body) {
+        throw new Error('message' in body ? body.message : `HTTP ${res.status}`);
+      }
+
+      setCurrent((prev) =>
+        prev
+          ? {
+              ...prev,
+              drafts: { ...prev.drafts, [recIndex]: body.draft },
+            }
+          : prev,
+      );
+    } catch (err: unknown) {
+      setDraftError({
+        recIndex,
+        message: err instanceof Error ? err.message : 'unknown error',
+      });
+    } finally {
+      setDraftingIndex(null);
     }
   }
 
@@ -107,6 +146,17 @@ export function AnalysisDashboard({
             </p>
             <p className="text-[11px] text-red-600 dark:text-red-400 font-mono break-all">
               {error}
+            </p>
+          </div>
+        )}
+
+        {draftError && (
+          <div className="border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 p-3">
+            <p className="text-xs font-medium text-amber-700 dark:text-amber-300 mb-1">
+              Draft failed (rec #{draftError.recIndex + 1})
+            </p>
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 font-mono break-all">
+              {draftError.message}
             </p>
           </div>
         )}
@@ -148,7 +198,12 @@ export function AnalysisDashboard({
 
       <section>
         {current ? (
-          <AnalysisView result={current.result} />
+          <AnalysisView
+            result={current.result}
+            drafts={current.drafts}
+            draftingIndex={draftingIndex}
+            onDraft={draftRec}
+          />
         ) : status !== 'running' ? (
           <div className="border border-dashed border-zinc-300 dark:border-zinc-800 p-12 text-center text-zinc-500">
             <p className="mb-2">No analysis yet.</p>

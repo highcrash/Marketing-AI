@@ -5,8 +5,9 @@ import { getLatestAnalysis, listAnalyses } from '@/lib/analyses';
 export const dynamic = 'force-dynamic';
 
 export default async function Home() {
+  type Latest = NonNullable<Awaited<ReturnType<typeof getLatestAnalysis>>>;
   let bootstrap:
-    | { ok: true; businessName: string; latest: { id: string; result: import('@/lib/ai/analyze').AnalysisResult } | null; list: import('@/lib/analyses').AnalysisListItem[] }
+    | { ok: true; businessName: string; latest: Latest | null; list: import('@/lib/analyses').AnalysisListItem[] }
     | { ok: false; error: string };
 
   try {

@@ -55,7 +55,42 @@ model Analysis {
   payload             String
   createdAt           DateTime @default(now())
 
-  business Business @relation(fields: [businessId], references: [id])
+  business Business        @relation(fields: [businessId], references: [id])
+  drafts   CampaignDraft[]
 
   @@index([businessId, createdAt])
+}
+
+/// A concrete campaign drafted from one recommendation in an Analysis.
+/// Re-drafting the same rec creates a new row — we don't overwrite, so
+/// the user can compare iterations. The latest row per rec is what the
+/// UI shows by default.
+///
+/// `recIndex` points into the source Analysis.recommendations array
+/// (we don't denormalise recs into their own table yet — when we do,
+/// this becomes an FK).
+model CampaignDraft {
+  id               String   @id @default(cuid())
+  analysisId       String
+  recIndex         Int
+  /// Cached rec title for fast list rendering without parsing the
+  /// source analysis payload.
+  recTitle         String
+  /// PENDING_REVIEW (just drafted), APPROVED, REJECTED, DISCARDED.
+  /// Approval workflow comes in a later phase — everything ships as
+  /// PENDING_REVIEW until then.
+  status           String   @default("PENDING_REVIEW")
+  model            String
+  inputTokens      Int
+  outputTokens     Int
+  cacheReadTokens  Int
+  cacheWriteTokens Int
+  /// JSON-serialised CampaignDraftPayload (see lib/ai/draft.ts).
+  payload          String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  analysis Analysis @relation(fields: [analysisId], references: [id])
+
+  @@index([analysisId, recIndex])
 }

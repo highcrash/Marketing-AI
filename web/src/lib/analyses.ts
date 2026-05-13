@@ -1,5 +1,8 @@
 import { prisma } from './db';
 import type { AnalysisResult } from './ai/analyze';
+import { listLatestDraftsByAnalysis, type DraftRow } from './drafts';
+
+export type DraftsByRecIndex = Record<number, DraftRow>;
 
 const SUMMARY_PREVIEW_LEN = 500;
 
@@ -61,28 +64,37 @@ export async function listAnalyses(
   return rows.map((r) => ({ ...r, generatedAt: r.generatedAt.toISOString() }));
 }
 
-/// Fetch one analysis by id and parse the stored payload back into the
-/// AnalysisResult shape. Returns null if not found.
+/// Fetch one analysis by id (with its latest draft per rec) and parse the
+/// stored payload back into the AnalysisResult shape. Returns null if not
+/// found.
 export async function getAnalysisById(
   id: string,
   businessId: string,
-): Promise<AnalysisResult | null> {
+): Promise<{ id: string; result: AnalysisResult; drafts: DraftsByRecIndex } | null> {
   const row = await prisma.analysis.findFirst({ where: { id, businessId } });
   if (!row) return null;
-  return JSON.parse(row.payload) as AnalysisResult;
+  const drafts = await listLatestDraftsByAnalysis(row.id);
+  return {
+    id: row.id,
+    result: JSON.parse(row.payload) as AnalysisResult,
+    drafts: Object.fromEntries(drafts),
+  };
 }
 
 export async function getLatestAnalysis(businessId: string): Promise<{
   id: string;
   result: AnalysisResult;
+  drafts: DraftsByRecIndex;
 } | null> {
   const row = await prisma.analysis.findFirst({
     where: { businessId },
     orderBy: { generatedAt: 'desc' },
   });
   if (!row) return null;
+  const drafts = await listLatestDraftsByAnalysis(row.id);
   return {
     id: row.id,
     result: JSON.parse(row.payload) as AnalysisResult,
+    drafts: Object.fromEntries(drafts),
   };
 }
