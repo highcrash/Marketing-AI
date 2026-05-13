@@ -1,11 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, Copy, RotateCcw, Send, Sparkles, X } from 'lucide-react';
+import { Check, Copy, RotateCcw, Send, Sparkles, Users, X } from 'lucide-react';
 
 import type { DraftPiece } from '@/lib/ai/draft';
 import type { DraftRow } from '@/lib/drafts';
 import type { SmsSendRow } from '@/lib/sms-sends';
+import { SegmentBlastPanel } from './SegmentBlastPanel';
 
 const STATUS_STYLES: Record<string, { label: string; pill: string }> = {
   PENDING_REVIEW: { label: 'Draft', pill: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300' },
@@ -139,6 +140,7 @@ export function DraftView({
               canSendSms={canSendSms}
               isSendingSms={sendingPieceIndex === i}
               lastSendResult={lastSendResultByPiece[i] ?? null}
+              draftId={draft.id}
               onSendSms={(phone) => onSendSms(i, phone)}
             />
           ))}
@@ -305,6 +307,7 @@ function PieceCard({
   canSendSms,
   isSendingSms,
   lastSendResult,
+  draftId,
   onSendSms,
 }: {
   piece: DraftPiece;
@@ -312,10 +315,12 @@ function PieceCard({
   canSendSms: boolean;
   isSendingSms: boolean;
   lastSendResult: SmsSendRow | null;
+  draftId: string;
   onSendSms: (phone: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [showSendForm, setShowSendForm] = useState(false);
+  const [showBlastForm, setShowBlastForm] = useState(false);
   const [phone, setPhone] = useState('');
   const isBrief = BRIEF_ASSET_TYPES.includes(piece.assetType);
   const isSmsPiece = piece.assetType === 'sms';
@@ -355,15 +360,26 @@ function PieceCard({
               {copied ? 'Copied' : 'Copy'}
             </button>
           )}
-          {showSmsControls && !showSendForm && (
-            <button
-              onClick={() => setShowSendForm(true)}
-              disabled={isSendingSms}
-              className="inline-flex items-center gap-1 text-[10px] text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-300 disabled:text-zinc-500 px-2 py-0.5"
-            >
-              <Send size={11} />
-              {isSendingSms ? 'Sending…' : 'Send'}
-            </button>
+          {showSmsControls && !showSendForm && !showBlastForm && (
+            <>
+              <button
+                onClick={() => setShowSendForm(true)}
+                disabled={isSendingSms}
+                className="inline-flex items-center gap-1 text-[10px] text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-300 disabled:text-zinc-500 px-2 py-0.5"
+                title="Send to one phone — test send"
+              >
+                <Send size={11} />
+                {isSendingSms ? 'Sending…' : 'Send to phone'}
+              </button>
+              <button
+                onClick={() => setShowBlastForm(true)}
+                className="inline-flex items-center gap-1 text-[10px] text-white bg-emerald-700 hover:bg-emerald-800 px-2 py-0.5"
+                title="Send to every customer matching a segment filter"
+              >
+                <Users size={11} />
+                Send to segment
+              </button>
+            </>
           )}
         </div>
       </header>
@@ -424,6 +440,14 @@ function PieceCard({
 
       {showSmsControls && lastSendResult && !showSendForm && (
         <SendResultLine result={lastSendResult} />
+      )}
+
+      {showSmsControls && showBlastForm && (
+        <SegmentBlastPanel
+          draftId={draftId}
+          pieceIndex={pieceIndex}
+          onClose={() => setShowBlastForm(false)}
+        />
       )}
     </div>
   );

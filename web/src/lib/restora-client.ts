@@ -268,4 +268,31 @@ export class RestoraClient {
       error: string | null;
     }>('/business/sms/send', input);
   }
+
+  /// Bulk send to a segment. Pass `dryRun: true` to preview the
+  /// recipient count without sending. Without dryRun, returns
+  /// { dryRun: false, recipientCount, sent, failed, campaignTag }.
+  /// With dryRun, returns { dryRun: true, recipientCount }.
+  sendSmsBlast(input: {
+    segment: {
+      minSpent?: number;
+      minVisits?: number;
+      maxLastVisitDays?: number;
+      minLoyaltyPoints?: number;
+    };
+    smsTemplate: string;
+    campaignTag?: string;
+    dryRun?: boolean;
+  }) {
+    return this.post<
+      | { dryRun: true; recipientCount: number }
+      | {
+          dryRun: false;
+          recipientCount: number;
+          sent: number;
+          failed: number;
+          campaignTag: string | null;
+        }
+    >('/business/sms/blast', input);
+  }
 }

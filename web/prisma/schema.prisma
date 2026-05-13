@@ -100,6 +100,7 @@ model CampaignDraft {
   parentDraft  CampaignDraft?  @relation("DraftRefinement", fields: [parentDraftId], references: [id])
   refinedDrafts CampaignDraft[] @relation("DraftRefinement")
   smsSendEvents SmsSendEvent[]
+  smsBlastEvents SmsBlastEvent[]
 
   @@index([analysisId, recIndex])
   @@index([parentDraftId])
@@ -130,6 +131,37 @@ model SmsSendEvent {
   error             String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
+  draft CampaignDraft @relation(fields: [draftId], references: [id])
+
+  @@index([draftId, createdAt])
+}
+
+/// One row per segment blast attempt. Holds the segment filter snapshot,
+/// rendered template body, and aggregate sent/failed counts. The
+/// granular per-recipient sms_logs live on Restora's side — this is a
+/// summary record so the dashboard can show "Sent to 47 / 53 · 2h ago"
+/// without round-tripping.
+model SmsBlastEvent {
+  id              String   @id @default(cuid())
+  draftId         String
+  pieceIndex      Int
+  /// JSON snapshot of the segment filter (minSpent, minVisits, etc.).
+  segmentFilter   String
+  /// Human-readable segment description rendered at submit time, e.g.
+  /// "Visited in last 30 days · min spend ৳500".
+  segmentLabel    String
+  body            String
+  campaignTag     String?
+  /// PENDING (in flight), COMPLETE (no failures), PARTIAL (some failed),
+  /// FAILED (catastrophic, e.g. upstream 5xx).
+  status          String   @default("PENDING")
+  recipientCount  Int      @default(0)
+  sentCount       Int      @default(0)
+  failedCount     Int      @default(0)
+  error           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   draft CampaignDraft @relation(fields: [draftId], references: [id])
 
