@@ -53,7 +53,10 @@ export interface AnalysisResult {
   model: string;
   inputTokens: number;
   outputTokens: number;
-  cachedTokens: number;
+  /** Tokens read from the prompt cache on this run (warm hits). 0 on first run. */
+  cacheReadTokens: number;
+  /** Tokens this run WROTE into the cache for future runs (cold). 0 if no caching this turn. */
+  cacheWriteTokens: number;
   recommendations: Recommendation[];
   /** Free-text exec summary the model writes before listing recommendations. */
   summary: string;
@@ -309,8 +312,10 @@ Produce the audit by calling the submit_marketing_audit tool. Cite specific numb
     model,
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
-    cachedTokens:
+    cacheReadTokens:
       (response.usage as { cache_read_input_tokens?: number }).cache_read_input_tokens ?? 0,
+    cacheWriteTokens:
+      (response.usage as { cache_creation_input_tokens?: number }).cache_creation_input_tokens ?? 0,
     recommendations: input.recommendations,
     summary: input.summary,
     inferredGoals: input.inferredGoals,

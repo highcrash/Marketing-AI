@@ -86,7 +86,7 @@ async function main() {
   console.log(`MARKETING AUDIT  —  ${result.business.name}`);
   console.log(`Generated: ${result.generatedAt}  ·  Model: ${result.model}  ·  ${elapsed}s`);
   console.log(
-    `Tokens: in=${result.inputTokens} cached=${result.cachedTokens} out=${result.outputTokens}`,
+    `Tokens: in=${result.inputTokens} (cache: read=${result.cacheReadTokens}, write=${result.cacheWriteTokens}) out=${result.outputTokens}`,
   );
   console.log('═'.repeat(78));
 
