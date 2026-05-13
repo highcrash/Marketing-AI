@@ -4,6 +4,7 @@ import type { AnalysisResult, Recommendation } from '@/lib/ai/analyze';
 import type { DraftsByRecIndex } from '@/lib/analyses';
 import type { SmsSendRow } from '@/lib/sms-sends';
 import { ActivityPanel } from './ActivityPanel';
+import { AuditComparisonPanel } from './AuditComparisonPanel';
 import { RecommendationCard } from './RecommendationCard';
 
 const EMPTY_SENDS: Record<number, SmsSendRow | null> = {};
@@ -100,6 +101,8 @@ export function AnalysisView({
         drafts={drafts}
         refreshKey={activityRefreshKey}
       />
+
+      <AuditComparisonPanel analysisId={analysisId} />
 
       <section>
         <h3 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-3">
