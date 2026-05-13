@@ -16,9 +16,9 @@ D:\Marketing AI\
 
 ## Status
 
-Phase 1.A — bootstrap. Single-tenant, human-in-loop, read-only analysis pipeline against Restora's external API. No campaign publishing yet.
+Full Phase 1 + much of Phase 2 shipped: audit → draft → refine → approve → SMS send (single + segment) → scheduled (one-off + weekly recurring) → activity feed → monthly stats → auth gate → Vercel-cron-ready.
 
-See [docs/architecture.md](docs/architecture.md) for the plan.
+See [docs/architecture.md](docs/architecture.md) for the original plan and [docs/deploy.md](docs/deploy.md) for the production deployment walkthrough.
 
 ## Local dev
 
