@@ -3,6 +3,7 @@
 import type { AnalysisResult, Recommendation } from '@/lib/ai/analyze';
 import type { DraftsByRecIndex } from '@/lib/analyses';
 import type { SmsSendRow } from '@/lib/sms-sends';
+import { ActivityPanel } from './ActivityPanel';
 import { RecommendationCard } from './RecommendationCard';
 
 const EMPTY_SENDS: Record<number, SmsSendRow | null> = {};
@@ -23,6 +24,7 @@ function priorityRank(p: Recommendation['priority']): number {
 }
 
 interface AnalysisViewProps {
+  analysisId: string;
   result: AnalysisResult;
   drafts: DraftsByRecIndex;
   draftingIndex: number | null;
@@ -32,13 +34,18 @@ interface AnalysisViewProps {
   sendingPieceKey: string | null;
   /// Last send result per `${draftId}:${pieceIndex}` from the current session.
   lastSendResultsByPiece: Record<string, SmsSendRow | null>;
+  /// Bumped by the dashboard after any state-changing action; triggers
+  /// the ActivityPanel to refetch.
+  activityRefreshKey: number;
   onDraft: (recIndex: number) => void;
   onRefine: (draftId: string, feedback: string) => void;
   onSetStatus: (draftId: string, status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED') => void;
   onSendSms: (draftId: string, pieceIndex: number, phone: string) => void;
+  onSegmentBlastSent: () => void;
 }
 
 export function AnalysisView({
+  analysisId,
   result,
   drafts,
   draftingIndex,
@@ -46,10 +53,12 @@ export function AnalysisView({
   updatingStatusDraftId,
   sendingPieceKey,
   lastSendResultsByPiece,
+  activityRefreshKey,
   onDraft,
   onRefine,
   onSetStatus,
   onSendSms,
+  onSegmentBlastSent,
 }: AnalysisViewProps) {
   // Keep recommendations in their original order so recIndex matches the
   // canonical position on the saved Analysis row (drafts reference recs by
@@ -84,6 +93,13 @@ export function AnalysisView({
           <Stat label="Output tokens" value={result.outputTokens.toLocaleString()} />
         </div>
       </section>
+
+      <ActivityPanel
+        analysisId={analysisId}
+        result={result}
+        drafts={drafts}
+        refreshKey={activityRefreshKey}
+      />
 
       <section>
         <h3 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-3">
@@ -143,6 +159,7 @@ export function AnalysisView({
                     onSendSms={(pieceIndex, phone) =>
                       draft && onSendSms(draft.id, pieceIndex, phone)
                     }
+                    onSegmentBlastSent={onSegmentBlastSent}
                   />
                 );
               })}

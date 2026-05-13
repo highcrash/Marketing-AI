@@ -53,6 +53,7 @@ export function DraftView({
   onRefine,
   onSetStatus,
   onSendSms,
+  onSegmentBlastSent,
 }: {
   draft: DraftRow;
   isRefining: boolean;
@@ -62,6 +63,9 @@ export function DraftView({
   onRefine: (feedback: string) => void;
   onSetStatus: (status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED') => void;
   onSendSms: (pieceIndex: number, phone: string) => void;
+  /// Bubbled up after a segment blast completes (success or partial) so
+  /// the parent activity feed can re-fetch.
+  onSegmentBlastSent: () => void;
 }) {
   const canSendSms = draft.status === 'APPROVED';
   const payload = draft.payload;
@@ -142,6 +146,7 @@ export function DraftView({
               lastSendResult={lastSendResultByPiece[i] ?? null}
               draftId={draft.id}
               onSendSms={(phone) => onSendSms(i, phone)}
+              onSegmentBlastSent={onSegmentBlastSent}
             />
           ))}
         </div>
@@ -309,6 +314,7 @@ function PieceCard({
   lastSendResult,
   draftId,
   onSendSms,
+  onSegmentBlastSent,
 }: {
   piece: DraftPiece;
   pieceIndex: number;
@@ -317,6 +323,7 @@ function PieceCard({
   lastSendResult: SmsSendRow | null;
   draftId: string;
   onSendSms: (phone: string) => void;
+  onSegmentBlastSent: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [showSendForm, setShowSendForm] = useState(false);
@@ -447,6 +454,7 @@ function PieceCard({
           draftId={draftId}
           pieceIndex={pieceIndex}
           onClose={() => setShowBlastForm(false)}
+          onSent={onSegmentBlastSent}
         />
       )}
     </div>

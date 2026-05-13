@@ -37,6 +37,11 @@ export function AnalysisDashboard({
     Record<string, SmsSendRow | null>
   >({});
   const [smsError, setSmsError] = useState<string | null>(null);
+  /// Bumped after every state-changing action so the ActivityPanel
+  /// re-fetches its timeline. Stats are derived client-side from
+  /// `current.drafts` so they update instantly without waiting.
+  const [activityRefreshKey, setActivityRefreshKey] = useState(0);
+  const bumpActivity = () => setActivityRefreshKey((k) => k + 1);
 
   async function runAnalysis() {
     setStatus('running');
@@ -58,6 +63,7 @@ export function AnalysisDashboard({
       // Fresh analysis means no drafts yet.
       setCurrent({ id: body.id, result: body.result, drafts: {} });
       setStatus('idle');
+      bumpActivity();
 
       const listRes = await fetch('/api/analyses');
       if (listRes.ok) {
@@ -81,6 +87,7 @@ export function AnalysisDashboard({
         | { error: string };
       if (!res.ok || 'error' in body) return;
       setCurrent({ id: body.id, result: body.result, drafts: body.drafts });
+      bumpActivity();
     } catch {
       // Swallow — list rows that fail just stay un-selected.
     }
@@ -112,6 +119,7 @@ export function AnalysisDashboard({
             }
           : prev,
       );
+      bumpActivity();
     } catch (err: unknown) {
       setDraftError({
         recIndex,
@@ -149,6 +157,7 @@ export function AnalysisDashboard({
             }
           : prev,
       );
+      bumpActivity();
     } catch (err: unknown) {
       setDraftError({
         recIndex: -1,
@@ -177,6 +186,7 @@ export function AnalysisDashboard({
       if ('event' in body && body.event) {
         // Whether SENT or PROVIDER_ERROR, persist the result so the user sees it.
         setLastSendResultsByPiece((prev) => ({ ...prev, [key]: body.event! }));
+        bumpActivity();
       }
       if (!res.ok || 'error' in body) {
         const msg = 'message' in body ? body.message : `HTTP ${res.status}`;
@@ -217,6 +227,7 @@ export function AnalysisDashboard({
             }
           : prev,
       );
+      bumpActivity();
     } catch (err: unknown) {
       // We don't have a stable recIndex here without re-deriving it, so
       // surface the error generically via the same sidebar slot.
@@ -327,6 +338,7 @@ export function AnalysisDashboard({
       <section>
         {current ? (
           <AnalysisView
+            analysisId={current.id}
             result={current.result}
             drafts={current.drafts}
             draftingIndex={draftingIndex}
@@ -334,10 +346,12 @@ export function AnalysisDashboard({
             updatingStatusDraftId={updatingStatusDraftId}
             sendingPieceKey={sendingPieceKey}
             lastSendResultsByPiece={lastSendResultsByPiece}
+            activityRefreshKey={activityRefreshKey}
             onDraft={draftRec}
             onRefine={refineDraft}
             onSetStatus={setDraftStatus}
             onSendSms={sendSms}
+            onSegmentBlastSent={bumpActivity}
           />
         ) : status !== 'running' ? (
           <div className="border border-dashed border-zinc-300 dark:border-zinc-800 p-12 text-center text-zinc-500">

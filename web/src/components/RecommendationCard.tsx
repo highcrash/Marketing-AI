@@ -23,6 +23,7 @@ export function RecommendationCard({
   onRefine,
   onSetStatus,
   onSendSms,
+  onSegmentBlastSent,
 }: {
   rec: Recommendation;
   draft: DraftRow | undefined;
@@ -35,6 +36,7 @@ export function RecommendationCard({
   onRefine: (feedback: string) => void;
   onSetStatus: (status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED') => void;
   onSendSms: (pieceIndex: number, phone: string) => void;
+  onSegmentBlastSent: () => void;
 }) {
   return (
     <article className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-5">
@@ -122,6 +124,7 @@ export function RecommendationCard({
           onRefine={onRefine}
           onSetStatus={onSetStatus}
           onSendSms={onSendSms}
+          onSegmentBlastSent={onSegmentBlastSent}
         />
       )}
     </article>
