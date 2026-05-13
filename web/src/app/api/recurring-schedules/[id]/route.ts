@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server';
 
 import { prisma } from '@/lib/db';
 import { getOrCreateBusinessFromEnv } from '@/lib/business';
-import { deleteRecurring, setRecurringActive } from '@/lib/recurring-schedules';
+import {
+  deleteRecurring,
+  setRecurringActive,
+  skipNextRecurring,
+} from '@/lib/recurring-schedules';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,14 +21,20 @@ async function ownershipCheck(id: string): Promise<boolean> {
 
 interface PatchBody {
   active?: unknown;
+  skipNext?: unknown;
 }
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const body = (await req.json().catch(() => ({}))) as PatchBody;
-  if (typeof body.active !== 'boolean') {
+  const hasActive = typeof body.active === 'boolean';
+  const hasSkipNext = body.skipNext === true;
+  if (!hasActive && !hasSkipNext) {
     return NextResponse.json(
-      { error: 'bad_request', message: 'active (boolean) is required' },
+      {
+        error: 'bad_request',
+        message: 'one of: active (boolean), skipNext (true) is required',
+      },
       { status: 400 },
     );
   }
@@ -32,7 +42,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (!(await ownershipCheck(id))) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 });
     }
-    const updated = await setRecurringActive(id, body.active);
+    if (hasSkipNext) {
+      const updated = await skipNextRecurring(id);
+      if (!updated) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+      return NextResponse.json({ recurring: updated });
+    }
+    const updated = await setRecurringActive(id, body.active as boolean);
     return NextResponse.json({ recurring: updated });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'unknown error';

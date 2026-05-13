@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Clock, Pause, Play, Repeat, Send, Trash2, Users, X } from 'lucide-react';
+import { Clock, Pause, Play, Repeat, Send, SkipForward, Trash2, Users, X } from 'lucide-react';
 
 import type {
   ScheduledBlastConfig,
@@ -235,6 +235,23 @@ export function SchedulePanel({
     }
   }
 
+  async function skipNextOccurrence(id: string) {
+    try {
+      const res = await fetch(`/api/recurring-schedules/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skipNext: true }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(body?.message ?? `HTTP ${res.status}`);
+      }
+      await refresh();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'unknown error');
+    }
+  }
+
   async function deleteRecurring(id: string) {
     try {
       const res = await fetch(`/api/recurring-schedules/${encodeURIComponent(id)}`, {
@@ -430,6 +447,7 @@ export function SchedulePanel({
                     key={item.id}
                     item={item}
                     onToggle={() => toggleRecurringActive(item.id, !item.active)}
+                    onSkipNext={() => skipNextOccurrence(item.id)}
                     onDelete={() => deleteRecurring(item.id)}
                   />
                 ))}
@@ -533,10 +551,12 @@ function ScheduledRow({ item, onCancel }: { item: ScheduledSendRow; onCancel: ()
 function RecurringRow({
   item,
   onToggle,
+  onSkipNext,
   onDelete,
 }: {
   item: RecurringScheduleRow;
   onToggle: () => void;
+  onSkipNext: () => void;
   onDelete: () => void;
 }) {
   const next = new Date(item.nextFireAt).toLocaleString();
@@ -565,6 +585,16 @@ function RecurringRow({
         · next {next} · {item.runCount} run{item.runCount === 1 ? '' : 's'}
       </span>
       <div className="ml-auto flex items-center gap-1">
+        {item.active && (
+          <button
+            onClick={onSkipNext}
+            className="text-zinc-400 hover:text-amber-600"
+            aria-label="Skip next occurrence"
+            title="Skip next occurrence (push nextFireAt forward by one cadence)"
+          >
+            <SkipForward size={11} />
+          </button>
+        )}
         <button
           onClick={onToggle}
           className="text-zinc-400 hover:text-blue-600"

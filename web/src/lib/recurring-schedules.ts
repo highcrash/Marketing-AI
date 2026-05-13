@@ -157,6 +157,23 @@ export async function setRecurringActive(
   return rowToRecurring(row);
 }
 
+/// Skip the NEXT scheduled fire without firing it. Used when there's a
+/// holiday / event / out-of-office week and you want the recurring
+/// schedule to resume on the following occurrence rather than pause
+/// outright. Implemented as `nextFireAt = bumpFireAt(nextFireAt, freq)`.
+export async function skipNextRecurring(
+  id: string,
+): Promise<RecurringScheduleRow | null> {
+  const row = await prisma.recurringSchedule.findUnique({ where: { id } });
+  if (!row) return null;
+  const next = bumpFireAt(row.nextFireAt, row.frequency as 'weekly');
+  const updated = await prisma.recurringSchedule.update({
+    where: { id },
+    data: { nextFireAt: next },
+  });
+  return rowToRecurring(updated);
+}
+
 export async function deleteRecurring(id: string): Promise<boolean> {
   try {
     await prisma.recurringSchedule.delete({ where: { id } });
