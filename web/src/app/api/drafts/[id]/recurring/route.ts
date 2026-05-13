@@ -1,0 +1,188 @@
+import { NextResponse } from 'next/server';
+
+import { prisma } from '@/lib/db';
+import { getDraftById } from '@/lib/drafts';
+import { getOrCreateBusinessFromEnv } from '@/lib/business';
+import {
+  createRecurringSchedule,
+  listRecurringByDraft,
+} from '@/lib/recurring-schedules';
+import type { ScheduledConfig } from '@/lib/scheduled-sends';
+import type { BlastSegmentFilter } from '@/lib/sms-blasts';
+
+export const dynamic = 'force-dynamic';
+
+interface PostBody {
+  pieceIndex?: unknown;
+  kind?: unknown;
+  config?: unknown;
+  dayOfWeek?: unknown;
+  hour?: unknown;
+  minute?: unknown;
+  timezone?: unknown;
+  firstFireAt?: unknown;
+  endsAt?: unknown;
+}
+
+const PHONE_RE = /^[+0-9()\-\s]{6,20}$/;
+
+function parseConfig(kind: string, raw: unknown): ScheduledConfig | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  if (kind === 'single') {
+    const phone = typeof obj.phone === 'string' ? obj.phone.trim() : '';
+    if (!PHONE_RE.test(phone)) return null;
+    const campaignTag =
+      typeof obj.campaignTag === 'string' && obj.campaignTag.trim().length > 0
+        ? obj.campaignTag.trim().slice(0, 120)
+        : null;
+    return { phone, campaignTag };
+  }
+  if (kind === 'blast') {
+    const seg = obj.segment;
+    if (!seg || typeof seg !== 'object') return null;
+    const segObj = seg as Record<string, unknown>;
+    const filter: BlastSegmentFilter = {};
+    for (const key of ['minSpent', 'minVisits', 'maxLastVisitDays', 'minLoyaltyPoints'] as const) {
+      const v = segObj[key];
+      if (v == null || v === '') continue;
+      const n = typeof v === 'number' ? v : Number(v);
+      if (!Number.isFinite(n) || n < 0) return null;
+      filter[key] = n;
+    }
+    const campaignTag =
+      typeof obj.campaignTag === 'string' && obj.campaignTag.trim().length > 0
+        ? obj.campaignTag.trim().slice(0, 120)
+        : null;
+    return { segment: filter, campaignTag };
+  }
+  return null;
+}
+
+export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id: draftId } = await ctx.params;
+  const body = (await req.json().catch(() => ({}))) as PostBody;
+
+  const pieceIndex = typeof body.pieceIndex === 'number' ? body.pieceIndex : null;
+  const kind = body.kind === 'single' || body.kind === 'blast' ? body.kind : null;
+  const dayOfWeek = typeof body.dayOfWeek === 'number' ? body.dayOfWeek : null;
+  const hour = typeof body.hour === 'number' ? body.hour : null;
+  const minute = typeof body.minute === 'number' ? body.minute : null;
+  const timezone = typeof body.timezone === 'string' ? body.timezone : null;
+  const firstFireStr = typeof body.firstFireAt === 'string' ? body.firstFireAt : null;
+  const endsAtStr = typeof body.endsAt === 'string' ? body.endsAt : null;
+
+  if (
+    pieceIndex == null ||
+    pieceIndex < 0 ||
+    !kind ||
+    dayOfWeek == null ||
+    dayOfWeek < 0 ||
+    dayOfWeek > 6 ||
+    hour == null ||
+    hour < 0 ||
+    hour > 23 ||
+    minute == null ||
+    minute < 0 ||
+    minute > 59 ||
+    !timezone ||
+    !firstFireStr
+  ) {
+    return NextResponse.json(
+      {
+        error: 'bad_request',
+        message:
+          'pieceIndex, kind (single|blast), dayOfWeek (0-6), hour (0-23), minute (0-59), timezone, firstFireAt all required',
+      },
+      { status: 400 },
+    );
+  }
+  const firstFireAt = new Date(firstFireStr);
+  if (Number.isNaN(firstFireAt.getTime())) {
+    return NextResponse.json(
+      { error: 'bad_request', message: 'firstFireAt must be a valid ISO datetime' },
+      { status: 400 },
+    );
+  }
+  const endsAt = endsAtStr ? new Date(endsAtStr) : null;
+  if (endsAt && Number.isNaN(endsAt.getTime())) {
+    return NextResponse.json(
+      { error: 'bad_request', message: 'endsAt must be a valid ISO datetime' },
+      { status: 400 },
+    );
+  }
+  const config = parseConfig(kind, body.config);
+  if (!config) {
+    return NextResponse.json(
+      { error: 'bad_request', message: 'config invalid for the supplied kind' },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const business = await getOrCreateBusinessFromEnv();
+    const draft = await getDraftById(draftId);
+    if (!draft) return NextResponse.json({ error: 'draft_not_found' }, { status: 404 });
+
+    const analysisRow = await prisma.analysis.findFirst({
+      where: { id: draft.analysisId, businessId: business.id },
+      select: { id: true },
+    });
+    if (!analysisRow) {
+      return NextResponse.json({ error: 'draft_not_found' }, { status: 404 });
+    }
+    if (draft.status !== 'APPROVED') {
+      return NextResponse.json(
+        { error: 'not_approved', message: 'Only approved drafts can be scheduled' },
+        { status: 409 },
+      );
+    }
+    const piece = draft.payload.pieces[pieceIndex];
+    if (!piece || piece.assetType !== 'sms') {
+      return NextResponse.json(
+        { error: 'bad_piece', message: 'pieceIndex does not point to an SMS piece' },
+        { status: 400 },
+      );
+    }
+
+    const recurring = await createRecurringSchedule({
+      draftId,
+      pieceIndex,
+      kind,
+      config,
+      frequency: 'weekly',
+      dayOfWeek,
+      hour,
+      minute,
+      timezone,
+      firstFireAt,
+      endsAt,
+    });
+    return NextResponse.json({ recurring });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'unknown error';
+    return NextResponse.json({ error: 'recurring_failed', message }, { status: 500 });
+  }
+}
+
+export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id: draftId } = await ctx.params;
+  try {
+    const business = await getOrCreateBusinessFromEnv();
+    const draft = await getDraftById(draftId);
+    if (!draft) return NextResponse.json({ error: 'draft_not_found' }, { status: 404 });
+
+    const analysisRow = await prisma.analysis.findFirst({
+      where: { id: draft.analysisId, businessId: business.id },
+      select: { id: true },
+    });
+    if (!analysisRow) {
+      return NextResponse.json({ error: 'draft_not_found' }, { status: 404 });
+    }
+    const items = await listRecurringByDraft(draftId);
+    return NextResponse.json({ items });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'unknown error';
+    return NextResponse.json({ error: 'list_failed', message }, { status: 500 });
+  }
+}

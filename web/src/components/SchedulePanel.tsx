@@ -1,26 +1,42 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Clock, Send, Trash2, Users, X } from 'lucide-react';
+import { Clock, Pause, Play, Repeat, Send, Trash2, Users, X } from 'lucide-react';
 
 import type {
   ScheduledBlastConfig,
+  ScheduledConfig,
   ScheduledSendRow,
   ScheduledSingleConfig,
 } from '@/lib/scheduled-sends';
+import type { RecurringScheduleRow } from '@/lib/recurring-schedules';
 
-type ScheduleMode = 'single' | 'blast';
+type RecurrenceMode = 'once' | 'weekly';
+type SendMode = 'single' | 'blast';
 
-/// Local datetime-input string for "tomorrow 10:00 (browser local)".
-/// We default the picker here because most BD-market marketing sends go
-/// out at 10am the next morning — it's the friendly first-guess time.
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+
+/// Tomorrow 10:00 in browser-local time, formatted for <input type="datetime-local">.
 function tomorrowAtTenLocal(): string {
   const d = new Date();
   d.setDate(d.getDate() + 1);
   d.setHours(10, 0, 0, 0);
-  // Strip the seconds + offset for the <input type="datetime-local">.
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/// Compute the next future moment that is (dayOfWeek, hour:minute) in
+/// the browser's local timezone. Used as the first fire for a weekly
+/// recurring schedule.
+function nextWeeklyFireLocal(dayOfWeek: number, hour: number, minute: number): Date {
+  const now = new Date();
+  const target = new Date(now);
+  target.setHours(hour, minute, 0, 0);
+  const currentDow = target.getDay();
+  let daysAhead = (dayOfWeek - currentDow + 7) % 7;
+  if (daysAhead === 0 && target.getTime() <= now.getTime()) daysAhead = 7;
+  target.setDate(target.getDate() + daysAhead);
+  return target;
 }
 
 export function SchedulePanel({
@@ -32,34 +48,59 @@ export function SchedulePanel({
   pieceIndex: number;
   onClose: () => void;
 }) {
-  const [items, setItems] = useState<ScheduledSendRow[]>([]);
+  const [onceItems, setOnceItems] = useState<ScheduledSendRow[]>([]);
+  const [recurringItems, setRecurringItems] = useState<RecurringScheduleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [mode, setMode] = useState<ScheduleMode>('single');
+  const [recurrence, setRecurrence] = useState<RecurrenceMode>('once');
+  const [sendMode, setSendMode] = useState<SendMode>('single');
+
+  // Once-mode inputs
   const [scheduledAtLocal, setScheduledAtLocal] = useState(tomorrowAtTenLocal());
+
+  // Weekly-mode inputs — default to next Thursday 10:00, the BD-market
+  // marketing default we keep mentioning.
+  const [dayOfWeek, setDayOfWeek] = useState(4);
+  const [timeOfDay, setTimeOfDay] = useState('10:00');
+
+  // Shared recipient inputs
   const [phone, setPhone] = useState('');
   const [minSpent, setMinSpent] = useState('');
   const [minVisits, setMinVisits] = useState('');
   const [maxLastVisitDays, setMaxLastVisitDays] = useState('');
   const [minLoyaltyPoints, setMinLoyaltyPoints] = useState('');
   const [campaignTag, setCampaignTag] = useState('');
+
   const [submitting, setSubmitting] = useState(false);
 
-  const itemsForThisPiece = items.filter((i) => i.pieceIndex === pieceIndex);
+  const onceForThisPiece = onceItems.filter((i) => i.pieceIndex === pieceIndex);
+  const recurringForThisPiece = recurringItems.filter((i) => i.pieceIndex === pieceIndex);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/drafts/${encodeURIComponent(draftId)}/schedule`);
-      const body = (await res.json()) as
+      const [onceRes, recurringRes] = await Promise.all([
+        fetch(`/api/drafts/${encodeURIComponent(draftId)}/schedule`),
+        fetch(`/api/drafts/${encodeURIComponent(draftId)}/recurring`),
+      ]);
+      const onceBody = (await onceRes.json()) as
         | { items: ScheduledSendRow[] }
         | { error: string; message: string };
-      if (!res.ok || 'error' in body) {
-        throw new Error('message' in body ? body.message : `HTTP ${res.status}`);
+      const recurringBody = (await recurringRes.json()) as
+        | { items: RecurringScheduleRow[] }
+        | { error: string; message: string };
+      if (!onceRes.ok || 'error' in onceBody) {
+        throw new Error('message' in onceBody ? onceBody.message : `HTTP ${onceRes.status}`);
       }
-      setItems(body.items);
+      if (!recurringRes.ok || 'error' in recurringBody) {
+        throw new Error(
+          'message' in recurringBody ? recurringBody.message : `HTTP ${recurringRes.status}`,
+        );
+      }
+      setOnceItems(onceBody.items);
+      setRecurringItems(recurringBody.items);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'unknown error');
     } finally {
@@ -71,30 +112,39 @@ export function SchedulePanel({
     void refresh();
   }, [refresh]);
 
-  async function submit() {
+  function buildConfig(): ScheduledConfig {
+    if (sendMode === 'single') {
+      if (phone.trim().length < 6) throw new Error('Phone number required');
+      return { phone: phone.trim(), campaignTag: campaignTag.trim() || null };
+    }
+    const segment: ScheduledBlastConfig['segment'] = {};
+    if (minSpent.trim()) segment.minSpent = Number(minSpent);
+    if (minVisits.trim()) segment.minVisits = Number(minVisits);
+    if (maxLastVisitDays.trim()) segment.maxLastVisitDays = Number(maxLastVisitDays);
+    if (minLoyaltyPoints.trim()) segment.minLoyaltyPoints = Number(minLoyaltyPoints);
+    return { segment, campaignTag: campaignTag.trim() || null };
+  }
+
+  function resetForm() {
+    setPhone('');
+    setMinSpent('');
+    setMinVisits('');
+    setMaxLastVisitDays('');
+    setMinLoyaltyPoints('');
+    setCampaignTag('');
+    setScheduledAtLocal(tomorrowAtTenLocal());
+  }
+
+  async function submitOnce() {
     setSubmitting(true);
     setError(null);
     try {
-      let config: ScheduledSingleConfig | ScheduledBlastConfig;
-      if (mode === 'single') {
-        if (phone.trim().length < 6) throw new Error('Phone number required');
-        config = { phone: phone.trim(), campaignTag: campaignTag.trim() || null };
-      } else {
-        const segment: ScheduledBlastConfig['segment'] = {};
-        if (minSpent.trim()) segment.minSpent = Number(minSpent);
-        if (minVisits.trim()) segment.minVisits = Number(minVisits);
-        if (maxLastVisitDays.trim()) segment.maxLastVisitDays = Number(maxLastVisitDays);
-        if (minLoyaltyPoints.trim()) segment.minLoyaltyPoints = Number(minLoyaltyPoints);
-        config = { segment, campaignTag: campaignTag.trim() || null };
-      }
-      // Convert local datetime-input back to ISO. The browser interprets
-      // datetime-local as local time, which is what we want — the
-      // resulting Date is the absolute moment the user picked.
+      const config = buildConfig();
       const scheduledAt = new Date(scheduledAtLocal).toISOString();
       const res = await fetch(`/api/drafts/${encodeURIComponent(draftId)}/schedule`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pieceIndex, kind: mode, config, scheduledAt }),
+        body: JSON.stringify({ pieceIndex, kind: sendMode, config, scheduledAt }),
       });
       const body = (await res.json()) as
         | { scheduled: ScheduledSendRow }
@@ -102,15 +152,7 @@ export function SchedulePanel({
       if (!res.ok || 'error' in body) {
         throw new Error('message' in body ? body.message : `HTTP ${res.status}`);
       }
-      // Reset the form back to fresh defaults, leave panel open so the
-      // user can schedule another.
-      setPhone('');
-      setMinSpent('');
-      setMinVisits('');
-      setMaxLastVisitDays('');
-      setMinLoyaltyPoints('');
-      setCampaignTag('');
-      setScheduledAtLocal(tomorrowAtTenLocal());
+      resetForm();
       await refresh();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'unknown error');
@@ -119,7 +161,49 @@ export function SchedulePanel({
     }
   }
 
-  async function cancel(id: string) {
+  async function submitWeekly() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const [hh, mm] = timeOfDay.split(':');
+      const hour = Number(hh);
+      const minute = Number(mm);
+      if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+        throw new Error('Time must be HH:mm');
+      }
+      const config = buildConfig();
+      const firstFireAt = nextWeeklyFireLocal(dayOfWeek, hour, minute);
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const res = await fetch(`/api/drafts/${encodeURIComponent(draftId)}/recurring`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pieceIndex,
+          kind: sendMode,
+          config,
+          dayOfWeek,
+          hour,
+          minute,
+          timezone,
+          firstFireAt: firstFireAt.toISOString(),
+        }),
+      });
+      const body = (await res.json()) as
+        | { recurring: RecurringScheduleRow }
+        | { error: string; message: string };
+      if (!res.ok || 'error' in body) {
+        throw new Error('message' in body ? body.message : `HTTP ${res.status}`);
+      }
+      resetForm();
+      await refresh();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'unknown error');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function cancelOnce(id: string) {
     try {
       const res = await fetch(`/api/scheduled-sends/${encodeURIComponent(id)}`, {
         method: 'DELETE',
@@ -134,12 +218,46 @@ export function SchedulePanel({
     }
   }
 
+  async function toggleRecurringActive(id: string, active: boolean) {
+    try {
+      const res = await fetch(`/api/recurring-schedules/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(body?.message ?? `HTTP ${res.status}`);
+      }
+      await refresh();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'unknown error');
+    }
+  }
+
+  async function deleteRecurring(id: string) {
+    try {
+      const res = await fetch(`/api/recurring-schedules/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(body?.message ?? `HTTP ${res.status}`);
+      }
+      await refresh();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'unknown error');
+    }
+  }
+
+  const totalQueued = onceForThisPiece.length + recurringForThisPiece.length;
+
   return (
     <div className="border-t border-zinc-100 dark:border-zinc-900 bg-zinc-50/50 dark:bg-zinc-900/30 px-3 py-3 space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-[10px] uppercase tracking-widest text-zinc-500 inline-flex items-center gap-1.5">
           <Clock size={12} />
-          Schedule a send for later
+          Schedule a send
         </p>
         <button
           onClick={onClose}
@@ -152,26 +270,85 @@ export function SchedulePanel({
       </div>
 
       <div className="flex gap-2 text-[10px]">
-        <ModeTab active={mode === 'single'} onClick={() => setMode('single')}>
-          <Send size={11} /> Single phone
-        </ModeTab>
-        <ModeTab active={mode === 'blast'} onClick={() => setMode('blast')}>
-          <Users size={11} /> Segment
-        </ModeTab>
+        <TabButton active={recurrence === 'once'} onClick={() => setRecurrence('once')}>
+          <Clock size={11} /> Once
+        </TabButton>
+        <TabButton active={recurrence === 'weekly'} onClick={() => setRecurrence('weekly')}>
+          <Repeat size={11} /> Weekly
+        </TabButton>
       </div>
 
-      <label className="flex flex-col gap-1">
-        <span className="text-[10px] uppercase tracking-widest text-zinc-500">When</span>
-        <input
-          type="datetime-local"
-          value={scheduledAtLocal}
-          onChange={(e) => setScheduledAtLocal(e.target.value)}
-          disabled={submitting}
-          className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 px-2 py-1.5 focus:outline-none focus:border-blue-600 font-mono text-[12px]"
-        />
-      </label>
+      <div className="flex gap-2 text-[10px]">
+        <TabButton
+          active={sendMode === 'single'}
+          onClick={() => setSendMode('single')}
+          variant="ghost"
+        >
+          <Send size={11} /> Single phone
+        </TabButton>
+        <TabButton
+          active={sendMode === 'blast'}
+          onClick={() => setSendMode('blast')}
+          variant="ghost"
+        >
+          <Users size={11} /> Segment
+        </TabButton>
+      </div>
 
-      {mode === 'single' ? (
+      {recurrence === 'once' ? (
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase tracking-widest text-zinc-500">When</span>
+          <input
+            type="datetime-local"
+            value={scheduledAtLocal}
+            onChange={(e) => setScheduledAtLocal(e.target.value)}
+            disabled={submitting}
+            className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 px-2 py-1.5 focus:outline-none focus:border-blue-600 font-mono text-[12px]"
+          />
+        </label>
+      ) : (
+        <div className="space-y-2">
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-widest text-zinc-500">Day of week</span>
+            <div className="flex flex-wrap gap-1">
+              {DAY_LABELS.map((label, i) => (
+                <button
+                  key={i}
+                  onClick={() => setDayOfWeek(i)}
+                  disabled={submitting}
+                  className={`px-2 py-1 text-[11px] uppercase tracking-widest ${
+                    dayOfWeek === i
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-blue-600'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-widest text-zinc-500">Time of day</span>
+            <input
+              type="time"
+              value={timeOfDay}
+              onChange={(e) => setTimeOfDay(e.target.value)}
+              disabled={submitting}
+              className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 px-2 py-1.5 focus:outline-none focus:border-blue-600 font-mono text-[12px] w-32"
+            />
+          </label>
+          <p className="text-[10px] text-zinc-500">
+            First fire:{' '}
+            {(() => {
+              const [hh, mm] = timeOfDay.split(':');
+              const fire = nextWeeklyFireLocal(dayOfWeek, Number(hh), Number(mm));
+              return fire.toLocaleString();
+            })()}
+          </p>
+        </div>
+      )}
+
+      {sendMode === 'single' ? (
         <FilterInput
           label="Phone"
           value={phone}
@@ -222,16 +399,17 @@ export function SchedulePanel({
 
       <div className="flex items-center justify-between">
         <p className="text-[10px] text-zinc-500">
-          Fires automatically while this dev server is running. The draft must still be APPROVED at
-          fire time.
+          {recurrence === 'weekly'
+            ? 'Fires every week while active. The draft must still be APPROVED at each fire time.'
+            : 'Fires once. The draft must still be APPROVED at fire time.'}
         </p>
         <button
-          onClick={submit}
+          onClick={() => (recurrence === 'once' ? void submitOnce() : void submitWeekly())}
           disabled={submitting}
           className="bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-300 disabled:text-zinc-500 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
         >
-          <Clock size={11} />
-          {submitting ? 'Scheduling…' : 'Schedule'}
+          {recurrence === 'weekly' ? <Repeat size={11} /> : <Clock size={11} />}
+          {submitting ? 'Scheduling…' : recurrence === 'weekly' ? 'Schedule weekly' : 'Schedule once'}
         </button>
       </div>
 
@@ -239,42 +417,67 @@ export function SchedulePanel({
         <p className="text-[11px] text-red-600 dark:text-red-400 font-mono break-all">{error}</p>
       )}
 
-      {itemsForThisPiece.length > 0 && (
-        <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800">
-          <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">
-            Queued for this piece · {itemsForThisPiece.length}
-          </p>
-          <ul className="space-y-1.5">
-            {itemsForThisPiece.map((item) => (
-              <ScheduledRow key={item.id} item={item} onCancel={() => cancel(item.id)} />
-            ))}
-          </ul>
+      {totalQueued > 0 && (
+        <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800 space-y-2">
+          {recurringForThisPiece.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">
+                Recurring · {recurringForThisPiece.length}
+              </p>
+              <ul className="space-y-1.5">
+                {recurringForThisPiece.map((item) => (
+                  <RecurringRow
+                    key={item.id}
+                    item={item}
+                    onToggle={() => toggleRecurringActive(item.id, !item.active)}
+                    onDelete={() => deleteRecurring(item.id)}
+                  />
+                ))}
+              </ul>
+            </div>
+          )}
+          {onceForThisPiece.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">
+                One-off · {onceForThisPiece.length}
+              </p>
+              <ul className="space-y-1.5">
+                {onceForThisPiece.map((item) => (
+                  <ScheduledRow key={item.id} item={item} onCancel={() => cancelOnce(item.id)} />
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
-      {loading && itemsForThisPiece.length === 0 && (
-        <p className="text-[11px] text-zinc-500">Loading queue…</p>
-      )}
+      {loading && totalQueued === 0 && <p className="text-[11px] text-zinc-500">Loading queue…</p>}
     </div>
   );
 }
 
-function ModeTab({
+function TabButton({
   active,
   onClick,
+  variant = 'solid',
   children,
 }: {
   active: boolean;
   onClick: () => void;
+  variant?: 'solid' | 'ghost';
   children: React.ReactNode;
 }) {
+  const activeClass =
+    variant === 'solid'
+      ? 'bg-blue-600 text-white'
+      : 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-600';
+  const inactiveClass =
+    'bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:border-blue-600';
   return (
     <button
       onClick={onClick}
       className={`inline-flex items-center gap-1 px-2 py-1 tracking-widest uppercase ${
-        active
-          ? 'bg-blue-600 text-white'
-          : 'bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:border-blue-600'
+        active ? activeClass : inactiveClass
       }`}
     >
       {children}
@@ -282,13 +485,7 @@ function ModeTab({
   );
 }
 
-function ScheduledRow({
-  item,
-  onCancel,
-}: {
-  item: ScheduledSendRow;
-  onCancel: () => void;
-}) {
+function ScheduledRow({ item, onCancel }: { item: ScheduledSendRow; onCancel: () => void }) {
   const when = new Date(item.scheduledAt).toLocaleString();
   const summary =
     item.kind === 'single'
@@ -329,6 +526,62 @@ function ScheduledRow({
           <Trash2 size={11} />
         </button>
       )}
+    </li>
+  );
+}
+
+function RecurringRow({
+  item,
+  onToggle,
+  onDelete,
+}: {
+  item: RecurringScheduleRow;
+  onToggle: () => void;
+  onDelete: () => void;
+}) {
+  const next = new Date(item.nextFireAt).toLocaleString();
+  const dayLabel = DAY_LABELS[item.dayOfWeek];
+  const timeLabel = `${String(item.hour).padStart(2, '0')}:${String(item.minute).padStart(2, '0')}`;
+  const cadence = `Every ${dayLabel} at ${timeLabel}`;
+  const summary =
+    item.kind === 'single'
+      ? `→ ${(item.config as ScheduledSingleConfig).phone}`
+      : `→ segment${
+          Object.keys((item.config as ScheduledBlastConfig).segment).length === 0
+            ? ' (all)'
+            : ''
+        }`;
+  const statusTone = item.active
+    ? 'text-blue-600 dark:text-blue-400'
+    : 'text-zinc-500';
+  return (
+    <li className="flex items-center gap-2 text-[11px] text-zinc-700 dark:text-zinc-300">
+      <span className={`uppercase tracking-widest text-[9px] ${statusTone} min-w-[60px]`}>
+        {item.active ? 'ACTIVE' : 'PAUSED'}
+      </span>
+      <span className="font-mono">{cadence}</span>
+      <span className="text-zinc-500">{summary}</span>
+      <span className="text-[10px] text-zinc-500">
+        · next {next} · {item.runCount} run{item.runCount === 1 ? '' : 's'}
+      </span>
+      <div className="ml-auto flex items-center gap-1">
+        <button
+          onClick={onToggle}
+          className="text-zinc-400 hover:text-blue-600"
+          aria-label={item.active ? 'Pause' : 'Resume'}
+          title={item.active ? 'Pause' : 'Resume'}
+        >
+          {item.active ? <Pause size={11} /> : <Play size={11} />}
+        </button>
+        <button
+          onClick={onDelete}
+          className="text-zinc-400 hover:text-red-600"
+          aria-label="Delete"
+          title="Delete"
+        >
+          <Trash2 size={11} />
+        </button>
+      </div>
     </li>
   );
 }

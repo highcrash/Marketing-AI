@@ -29,6 +29,7 @@ import {
   type ScheduledBlastConfig,
   type ScheduledSingleConfig,
 } from './scheduled-sends';
+import { listDueRecurring, markRecurringFired } from './recurring-schedules';
 import { prisma } from './db';
 
 /// Run one tick: claim due rows, execute each, persist results. Returns
@@ -40,13 +41,16 @@ export async function runSchedulerTick(): Promise<{ fired: number; failed: numbe
 
   try {
     const due = await claimDueScheduledSends();
-    if (due.length === 0) return { fired, failed, skipped };
+    const dueRecurring = await listDueRecurring();
+    if (due.length === 0 && dueRecurring.length === 0) {
+      return { fired, failed, skipped };
+    }
 
     const business = await getOrCreateBusinessFromEnv().catch(() => null);
     if (!business) {
       // Couldn't resolve a business (missing env, network, whatever).
-      // Don't burn through the queue — release the claimed rows back to
-      // PENDING so the next tick retries.
+      // Release the claimed one-off rows back to PENDING. Recurring
+      // rows aren't "claimed" so the next tick naturally retries.
       for (const row of due) {
         await prisma.scheduledSend.updateMany({
           where: { id: row.id, status: 'RUNNING' },
@@ -54,6 +58,56 @@ export async function runSchedulerTick(): Promise<{ fired: number; failed: numbe
         });
       }
       return { fired, failed, skipped };
+    }
+
+    // Recurring schedules first: each fire enters the same audit tables
+    // as on-demand sends, so the activity feed picks them up uniformly.
+    for (const r of dueRecurring) {
+      try {
+        const draft = await prisma.campaignDraft.findUnique({
+          where: { id: r.draftId },
+          select: { status: true },
+        });
+        if (!draft || draft.status !== 'APPROVED') {
+          // Skip THIS fire but don't deactivate the schedule — the user
+          // might re-approve before next week's fire. Still bump
+          // nextFireAt so we don't fire-storm on a re-opened draft.
+          await markRecurringFired(r.id, {
+            ok: false,
+            error: `Draft ${draft ? `is ${draft.status}` : 'no longer exists'} at fire time — skipped`,
+          });
+          skipped += 1;
+          continue;
+        }
+
+        if (r.kind === 'single') {
+          const cfg = r.config as ScheduledSingleConfig;
+          await executeSingleSmsSend({
+            business,
+            draftId: r.draftId,
+            pieceIndex: r.pieceIndex,
+            phone: cfg.phone,
+            campaignTag: cfg.campaignTag ?? null,
+          });
+        } else if (r.kind === 'blast') {
+          const cfg = r.config as ScheduledBlastConfig;
+          await executeSmsBlast({
+            business,
+            draftId: r.draftId,
+            pieceIndex: r.pieceIndex,
+            segment: cfg.segment,
+            campaignTag: cfg.campaignTag ?? null,
+          });
+        } else {
+          throw new Error(`Unknown recurring kind: ${r.kind as string}`);
+        }
+        await markRecurringFired(r.id, { ok: true });
+        fired += 1;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'unknown error';
+        await markRecurringFired(r.id, { ok: false, error: message });
+        failed += 1;
+      }
     }
 
     for (const row of due) {
