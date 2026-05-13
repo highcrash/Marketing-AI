@@ -3,13 +3,9 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getDraftById } from '@/lib/drafts';
 import { getOrCreateBusinessFromEnv } from '@/lib/business';
+import { executeSmsBlast, SendExecutionError } from '@/lib/execute-sends';
 import { RestoraClient, RestoraApiError } from '@/lib/restora-client';
-import {
-  createPendingBlast,
-  describeSegment,
-  markBlastResult,
-  type BlastSegmentFilter,
-} from '@/lib/sms-blasts';
+import { describeSegment, type BlastSegmentFilter } from '@/lib/sms-blasts';
 
 export const dynamic = 'force-dynamic';
 // Bulk send loops one-by-one on the Restora side. At ~100ms per SMS
@@ -21,6 +17,9 @@ interface PostBody {
   segment?: unknown;
   campaignTag?: unknown;
   dryRun?: unknown;
+  /// Optional user-edited body. Replaces piece.content for the blast,
+  /// piece.content stays untouched. Same {{name}} placeholders work.
+  body?: unknown;
 }
 
 function parseSegment(raw: unknown): BlastSegmentFilter | null {
@@ -47,6 +46,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     typeof body.campaignTag === 'string' && body.campaignTag.trim().length > 0
       ? body.campaignTag.trim().slice(0, 120)
       : null;
+  const bodyOverride =
+    typeof body.body === 'string' && body.body.trim().length > 0
+      ? body.body.trim()
+      : null;
   const dryRun = body.dryRun === true;
 
   if (pieceIndex == null || pieceIndex < 0) {
@@ -64,39 +67,32 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   try {
     const business = await getOrCreateBusinessFromEnv();
-    const draft = await getDraftById(draftId);
-    if (!draft) return NextResponse.json({ error: 'draft_not_found' }, { status: 404 });
-
-    const analysisRow = await prisma.analysis.findFirst({
-      where: { id: draft.analysisId, businessId: business.id },
-      select: { id: true },
-    });
-    if (!analysisRow) {
-      return NextResponse.json({ error: 'draft_not_found' }, { status: 404 });
-    }
-
-    if (draft.status !== 'APPROVED') {
-      return NextResponse.json(
-        { error: 'not_approved', message: 'Only approved drafts can be sent' },
-        { status: 409 },
-      );
-    }
-
-    const piece = draft.payload.pieces[pieceIndex];
-    if (!piece || piece.assetType !== 'sms') {
-      return NextResponse.json(
-        { error: 'bad_piece', message: 'pieceIndex does not point to an SMS piece' },
-        { status: 400 },
-      );
-    }
-
-    const restora = new RestoraClient(business.baseUrl, business.apiKey);
 
     if (dryRun) {
+      // For preview we still verify ownership but don't need
+      // executeSmsBlast — it would write an audit row we don't want.
+      const draft = await getDraftById(draftId);
+      if (!draft) return NextResponse.json({ error: 'draft_not_found' }, { status: 404 });
+      const analysisRow = await prisma.analysis.findFirst({
+        where: { id: draft.analysisId, businessId: business.id },
+        select: { id: true },
+      });
+      if (!analysisRow) {
+        return NextResponse.json({ error: 'draft_not_found' }, { status: 404 });
+      }
+      const piece = draft.payload.pieces[pieceIndex];
+      if (!piece || piece.assetType !== 'sms') {
+        return NextResponse.json(
+          { error: 'bad_piece', message: 'pieceIndex does not point to an SMS piece' },
+          { status: 400 },
+        );
+      }
+      const previewBody = bodyOverride || piece.content;
+      const restora = new RestoraClient(business.baseUrl, business.apiKey);
       try {
         const preview = await restora.sendSmsBlast({
           segment,
-          smsTemplate: piece.content,
+          smsTemplate: previewBody,
           campaignTag: campaignTag ?? undefined,
           dryRun: true,
         });
@@ -114,54 +110,28 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       }
     }
 
-    // Persist BEFORE the upstream call so even a crash leaves an audit row.
-    const blast = await createPendingBlast({
+    const event = await executeSmsBlast({
+      business,
       draftId,
       pieceIndex,
-      segmentFilter: segment,
-      body: piece.content,
+      segment,
       campaignTag,
+      bodyOverride,
     });
 
-    try {
-      const result = await restora.sendSmsBlast({
-        segment,
-        smsTemplate: piece.content,
-        campaignTag: campaignTag ?? undefined,
-        dryRun: false,
-      });
-      if (result.data.dryRun) {
-        // Should not happen — we passed dryRun: false. Defensive.
-        const updated = await markBlastResult(blast.id, {
-          recipientCount: 0,
-          sentCount: 0,
-          failedCount: 0,
-          status: 'FAILED',
-          error: 'Upstream returned dryRun: true unexpectedly',
-        });
-        return NextResponse.json({ event: updated }, { status: 502 });
-      }
-      const { recipientCount, sent, failed } = result.data;
-      const status = failed === 0 ? 'COMPLETE' : sent === 0 ? 'FAILED' : 'PARTIAL';
-      const updated = await markBlastResult(blast.id, {
-        recipientCount,
-        sentCount: sent,
-        failedCount: failed,
-        status,
-      });
-      return NextResponse.json({ event: updated });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'unknown error';
-      const updated = await markBlastResult(blast.id, {
-        recipientCount: 0,
-        sentCount: 0,
-        failedCount: 0,
-        status: 'FAILED',
-        error: message,
-      });
-      return NextResponse.json({ event: updated, error: 'blast_failed', message }, { status: 502 });
+    if (event.status === 'FAILED') {
+      return NextResponse.json(
+        { event, error: 'blast_failed', message: event.error ?? event.status },
+        { status: 502 },
+      );
     }
+    return NextResponse.json({ event });
   } catch (err: unknown) {
+    if (err instanceof SendExecutionError) {
+      const code = err.code;
+      const status = code === 'not_approved' ? 409 : code === 'draft_not_found' ? 404 : 400;
+      return NextResponse.json({ error: code, message: err.message }, { status });
+    }
     const message = err instanceof Error ? err.message : 'unknown error';
     return NextResponse.json({ error: 'unexpected', message }, { status: 500 });
   }

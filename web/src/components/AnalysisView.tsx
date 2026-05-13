@@ -1,13 +1,15 @@
 'use client';
 
 import type { AnalysisResult, Recommendation } from '@/lib/ai/analyze';
-import type { DraftsByRecIndex } from '@/lib/analyses';
+import type { CompletionsByKey, DraftsByRecIndex } from '@/lib/analyses';
+import type { PieceCompletionRow } from '@/lib/piece-completions';
 import type { SmsSendRow } from '@/lib/sms-sends';
 import { ActivityPanel } from './ActivityPanel';
 import { AuditComparisonPanel } from './AuditComparisonPanel';
 import { RecommendationCard } from './RecommendationCard';
 
 const EMPTY_SENDS: Record<number, SmsSendRow | null> = {};
+const EMPTY_COMPLETIONS: Record<number, PieceCompletionRow | null> = {};
 
 const CATEGORY_LABEL: Record<Recommendation['category'], string> = {
   acquisition: 'Acquisition',
@@ -35,14 +37,28 @@ interface AnalysisViewProps {
   sendingPieceKey: string | null;
   /// Last send result per `${draftId}:${pieceIndex}` from the current session.
   lastSendResultsByPiece: Record<string, SmsSendRow | null>;
+  /// All completions for this analysis, keyed `${draftId}:${pieceIndex}`.
+  completions: CompletionsByKey;
+  /// Active completion-toggle keyed `${draftId}:${pieceIndex}`. Null when nothing in flight.
+  togglingCompletionKey: string | null;
   /// Bumped by the dashboard after any state-changing action; triggers
   /// the ActivityPanel to refetch.
   activityRefreshKey: number;
   onDraft: (recIndex: number) => void;
   onRefine: (draftId: string, feedback: string) => void;
   onSetStatus: (draftId: string, status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED') => void;
-  onSendSms: (draftId: string, pieceIndex: number, phone: string) => void;
+  onSendSms: (
+    draftId: string,
+    pieceIndex: number,
+    phone: string,
+    bodyOverride: string | null,
+  ) => void;
   onSegmentBlastSent: () => void;
+  onToggleCompletion: (
+    draftId: string,
+    pieceIndex: number,
+    currentlyComplete: boolean,
+  ) => void;
 }
 
 export function AnalysisView({
@@ -54,12 +70,15 @@ export function AnalysisView({
   updatingStatusDraftId,
   sendingPieceKey,
   lastSendResultsByPiece,
+  completions,
+  togglingCompletionKey,
   activityRefreshKey,
   onDraft,
   onRefine,
   onSetStatus,
   onSendSms,
   onSegmentBlastSent,
+  onToggleCompletion,
 }: AnalysisViewProps) {
   // Keep recommendations in their original order so recIndex matches the
   // canonical position on the saved Analysis row (drafts reference recs by
@@ -132,19 +151,33 @@ export function AnalysisView({
                 const draft = drafts[recIndex];
                 let sendingPieceIndex: number | null = null;
                 let perPieceSends: Record<number, SmsSendRow | null> = EMPTY_SENDS;
+                let perPieceCompletions: Record<number, PieceCompletionRow | null> = EMPTY_COMPLETIONS;
+                let togglingPieceIndex: number | null = null;
                 if (draft) {
                   if (sendingPieceKey?.startsWith(`${draft.id}:`)) {
                     const idx = Number(sendingPieceKey.slice(draft.id.length + 1));
                     if (!Number.isNaN(idx)) sendingPieceIndex = idx;
                   }
-                  const filtered: Record<number, SmsSendRow | null> = {};
+                  if (togglingCompletionKey?.startsWith(`${draft.id}:`)) {
+                    const idx = Number(togglingCompletionKey.slice(draft.id.length + 1));
+                    if (!Number.isNaN(idx)) togglingPieceIndex = idx;
+                  }
+                  const sendsFiltered: Record<number, SmsSendRow | null> = {};
                   for (const [key, val] of Object.entries(lastSendResultsByPiece)) {
                     if (key.startsWith(`${draft.id}:`)) {
                       const idx = Number(key.slice(draft.id.length + 1));
-                      if (!Number.isNaN(idx)) filtered[idx] = val;
+                      if (!Number.isNaN(idx)) sendsFiltered[idx] = val;
                     }
                   }
-                  perPieceSends = filtered;
+                  perPieceSends = sendsFiltered;
+                  const compFiltered: Record<number, PieceCompletionRow | null> = {};
+                  for (const [key, val] of Object.entries(completions)) {
+                    if (key.startsWith(`${draft.id}:`)) {
+                      const idx = Number(key.slice(draft.id.length + 1));
+                      if (!Number.isNaN(idx)) compFiltered[idx] = val;
+                    }
+                  }
+                  perPieceCompletions = compFiltered;
                 }
                 return (
                   <RecommendationCard
@@ -156,13 +189,18 @@ export function AnalysisView({
                     isUpdatingStatus={!!draft && updatingStatusDraftId === draft.id}
                     sendingPieceIndex={sendingPieceIndex}
                     lastSendResultByPiece={perPieceSends}
+                    completionsByPiece={perPieceCompletions}
+                    togglingPieceIndex={togglingPieceIndex}
                     onDraft={() => onDraft(recIndex)}
                     onRefine={(feedback) => draft && onRefine(draft.id, feedback)}
                     onSetStatus={(status) => draft && onSetStatus(draft.id, status)}
-                    onSendSms={(pieceIndex, phone) =>
-                      draft && onSendSms(draft.id, pieceIndex, phone)
+                    onSendSms={(pieceIndex, phone, bodyOverride) =>
+                      draft && onSendSms(draft.id, pieceIndex, phone, bodyOverride)
                     }
                     onSegmentBlastSent={onSegmentBlastSent}
+                    onToggleCompletion={(pieceIndex, currentlyComplete) =>
+                      draft && onToggleCompletion(draft.id, pieceIndex, currentlyComplete)
+                    }
                   />
                 );
               })}

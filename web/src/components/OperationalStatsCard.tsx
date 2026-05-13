@@ -79,6 +79,7 @@ export function OperationalStatsCard({ refreshKey }: { refreshKey: number }) {
         <Row label="Recipients sent" value={stats.blastSent} />
         <Row label="Scheduled pending" value={stats.scheduledPending} tone={stats.scheduledPending > 0 ? 'info' : undefined} />
         <Row label="Recurring active" value={stats.recurringActive} tone={stats.recurringActive > 0 ? 'info' : undefined} />
+        <Row label="Pieces done" value={stats.piecesCompleted} tone={stats.piecesCompleted > 0 ? 'success' : undefined} />
       </div>
 
       <div className="pt-2 border-t border-zinc-100 dark:border-zinc-900">

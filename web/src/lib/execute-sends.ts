@@ -26,6 +26,7 @@ import {
   type BlastEventRow,
   type BlastSegmentFilter,
 } from './sms-blasts';
+import { markPieceComplete } from './piece-completions';
 
 export class SendExecutionError extends Error {
   constructor(public code: string, message: string) {
@@ -81,18 +82,22 @@ export async function executeSingleSmsSend(params: {
   pieceIndex: number;
   phone: string;
   campaignTag?: string | null;
+  /// User-edited body. When supplied, replaces piece.content for the
+  /// audit row + the upstream call. piece.content stays untouched.
+  bodyOverride?: string | null;
 }): Promise<SmsSendRow> {
   const { pieceContent } = await resolveSendPiece(
     params.draftId,
     params.pieceIndex,
     params.business.id,
   );
+  const body = params.bodyOverride?.trim() || pieceContent;
 
   const event = await createPendingSmsSend({
     draftId: params.draftId,
     pieceIndex: params.pieceIndex,
     toPhone: params.phone,
-    body: pieceContent,
+    body,
     campaignTag: params.campaignTag ?? null,
   });
 
@@ -100,15 +105,27 @@ export async function executeSingleSmsSend(params: {
   try {
     const result = await restora.sendSms({
       phone: params.phone,
-      body: pieceContent,
+      body,
       campaignTag: params.campaignTag ?? undefined,
     });
-    return markSmsSendResult(event.id, {
+    const updated = await markSmsSendResult(event.id, {
       status: result.data.ok ? 'SENT' : 'PROVIDER_ERROR',
       providerRequestId: result.data.providerRequestId,
       providerStatus: result.data.status,
       error: result.data.error,
     });
+    if (result.data.ok) {
+      // Auto-mark the piece as completed via the integrated send path.
+      // The user can still uncheck if they want — this is just the
+      // default state. Fire-and-forget; a failed completion-write
+      // shouldn't fail the send.
+      void markPieceComplete({
+        draftId: params.draftId,
+        pieceIndex: params.pieceIndex,
+        source: 'integrated-sms-send',
+      }).catch(() => undefined);
+    }
+    return updated;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'unknown error';
     return markSmsSendResult(event.id, {
@@ -124,18 +141,20 @@ export async function executeSmsBlast(params: {
   pieceIndex: number;
   segment: BlastSegmentFilter;
   campaignTag?: string | null;
+  bodyOverride?: string | null;
 }): Promise<BlastEventRow> {
   const { pieceContent } = await resolveSendPiece(
     params.draftId,
     params.pieceIndex,
     params.business.id,
   );
+  const body = params.bodyOverride?.trim() || pieceContent;
 
   const blast = await createPendingBlast({
     draftId: params.draftId,
     pieceIndex: params.pieceIndex,
     segmentFilter: params.segment,
-    body: pieceContent,
+    body,
     campaignTag: params.campaignTag ?? null,
   });
 
@@ -143,7 +162,7 @@ export async function executeSmsBlast(params: {
   try {
     const result = await restora.sendSmsBlast({
       segment: params.segment,
-      smsTemplate: pieceContent,
+      smsTemplate: body,
       campaignTag: params.campaignTag ?? undefined,
       dryRun: false,
     });
@@ -158,12 +177,21 @@ export async function executeSmsBlast(params: {
     }
     const { recipientCount, sent, failed } = result.data;
     const status = failed === 0 ? 'COMPLETE' : sent === 0 ? 'FAILED' : 'PARTIAL';
-    return markBlastResult(blast.id, {
+    const updated = await markBlastResult(blast.id, {
       recipientCount,
       sentCount: sent,
       failedCount: failed,
       status,
     });
+    if (status !== 'FAILED') {
+      void markPieceComplete({
+        draftId: params.draftId,
+        pieceIndex: params.pieceIndex,
+        source: 'integrated-sms-blast',
+        notes: `Sent to ${sent}/${recipientCount} recipients`,
+      }).catch(() => undefined);
+    }
+    return updated;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'unknown error';
     return markBlastResult(blast.id, {

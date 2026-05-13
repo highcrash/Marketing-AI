@@ -2,6 +2,7 @@
 
 import type { Recommendation } from '@/lib/ai/analyze';
 import type { DraftRow } from '@/lib/drafts';
+import type { PieceCompletionRow } from '@/lib/piece-completions';
 import type { SmsSendRow } from '@/lib/sms-sends';
 import { DraftView } from './DraftView';
 
@@ -19,11 +20,14 @@ export function RecommendationCard({
   isUpdatingStatus,
   sendingPieceIndex,
   lastSendResultByPiece,
+  completionsByPiece,
+  togglingPieceIndex,
   onDraft,
   onRefine,
   onSetStatus,
   onSendSms,
   onSegmentBlastSent,
+  onToggleCompletion,
 }: {
   rec: Recommendation;
   draft: DraftRow | undefined;
@@ -32,11 +36,14 @@ export function RecommendationCard({
   isUpdatingStatus: boolean;
   sendingPieceIndex: number | null;
   lastSendResultByPiece: Record<number, SmsSendRow | null>;
+  completionsByPiece: Record<number, PieceCompletionRow | null>;
+  togglingPieceIndex: number | null;
   onDraft: () => void;
   onRefine: (feedback: string) => void;
   onSetStatus: (status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED') => void;
-  onSendSms: (pieceIndex: number, phone: string) => void;
+  onSendSms: (pieceIndex: number, phone: string, bodyOverride: string | null) => void;
   onSegmentBlastSent: () => void;
+  onToggleCompletion: (pieceIndex: number, currentlyComplete: boolean) => void;
 }) {
   return (
     <article className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-5">
@@ -121,10 +128,13 @@ export function RecommendationCard({
           isUpdatingStatus={isUpdatingStatus}
           sendingPieceIndex={sendingPieceIndex}
           lastSendResultByPiece={lastSendResultByPiece}
+          completionsByPiece={completionsByPiece}
+          togglingPieceIndex={togglingPieceIndex}
           onRefine={onRefine}
           onSetStatus={onSetStatus}
           onSendSms={onSendSms}
           onSegmentBlastSent={onSegmentBlastSent}
+          onToggleCompletion={onToggleCompletion}
         />
       )}
     </article>

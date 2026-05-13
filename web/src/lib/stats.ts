@@ -65,6 +65,7 @@ export interface OperationalStats {
   blastSent: number;
   scheduledPending: number;
   recurringActive: number;
+  piecesCompleted: number;
   estimatedAiSpendUsd: number;
 }
 
@@ -88,6 +89,7 @@ export async function getOperationalStats(businessId: string): Promise<Operation
     blasts,
     scheduledPending,
     recurringActive,
+    piecesCompleted,
   ] = await Promise.all([
     prisma.analysis.findMany({
       where: { businessId, createdAt: { gte: since } },
@@ -138,6 +140,12 @@ export async function getOperationalStats(businessId: string): Promise<Operation
         draft: { analysis: { businessId } },
       },
     }),
+    prisma.pieceCompletion.count({
+      where: {
+        completedAt: { gte: since },
+        draft: { analysis: { businessId } },
+      },
+    }),
   ]);
 
   // Latest draft per recIndex per analysis defines its "current" state —
@@ -185,6 +193,7 @@ export async function getOperationalStats(businessId: string): Promise<Operation
     blastSent,
     scheduledPending,
     recurringActive,
+    piecesCompleted,
     estimatedAiSpendUsd: Math.round(usd * 100) / 100,
   };
 }

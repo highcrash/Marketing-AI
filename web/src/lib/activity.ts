@@ -1,6 +1,6 @@
 import { prisma } from './db';
 
-export type ActivityKind = 'draft' | 'refine' | 'status' | 'send' | 'blast';
+export type ActivityKind = 'draft' | 'refine' | 'status' | 'send' | 'blast' | 'completion';
 
 export interface ActivityItem {
   /// ISO 8601 timestamp. Items are sorted desc by this.
@@ -23,7 +23,7 @@ export interface ActivityItem {
 export async function getAnalysisActivity(
   analysisId: string,
 ): Promise<{ items: ActivityItem[] }> {
-  const [drafts, sends, blasts] = await Promise.all([
+  const [drafts, sends, blasts, completions] = await Promise.all([
     prisma.campaignDraft.findMany({
       where: { analysisId },
       orderBy: { createdAt: 'desc' },
@@ -66,6 +66,18 @@ export async function getAnalysisActivity(
         status: true,
         error: true,
         createdAt: true,
+        draft: { select: { recIndex: true, recTitle: true } },
+      },
+      take: 100,
+    }),
+    prisma.pieceCompletion.findMany({
+      where: { draft: { analysisId } },
+      orderBy: { completedAt: 'desc' },
+      select: {
+        pieceIndex: true,
+        source: true,
+        notes: true,
+        completedAt: true,
         draft: { select: { recIndex: true, recTitle: true } },
       },
       take: 100,
@@ -132,6 +144,22 @@ export async function getAnalysisActivity(
           ? `Blast partial: ${b.sentCount}/${recip} sent · ${b.segmentLabel}`
           : `Blast failed${b.error ? `: ${b.error.slice(0, 80)}` : ''} · ${b.segmentLabel}`,
       tone,
+    });
+  }
+
+  for (const c of completions) {
+    const isAuto = c.source !== 'manual';
+    items.push({
+      at: c.completedAt.toISOString(),
+      kind: 'completion',
+      recIndex: c.draft.recIndex,
+      recTitle: c.draft.recTitle,
+      summary: isAuto
+        ? `Auto-marked piece done (${c.source})`
+        : c.notes
+        ? `Marked piece done: ${c.notes.slice(0, 80)}`
+        : 'Marked piece done (handled externally)',
+      tone: 'success',
     });
   }
 

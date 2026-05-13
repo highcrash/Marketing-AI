@@ -222,6 +222,7 @@ const SYSTEM_PROMPT = `You are the same marketing strategist who wrote the audit
 Your output will be copy-pasted into Facebook, SMS, Foodpanda, in-store cards, and email tools. So:
 
 - Write the LITERAL copy, not "draft an SMS that says…". The user will copy your text verbatim.
+- RESOLVE EVERY TEMPLATE PLACEHOLDER. The user message states today's date. When you reference a future expiry, validity window, or deadline, write the actual ISO date or human-readable date — never write [DATE+14], {{date}}, [EXPIRES], or any other unresolved token. These ship as literal text and embarrass the brand.
 - Match the local context: this is a Bangladesh business. Use BDT, taka symbol where appropriate. SMS is the highest-ROI channel — produce SMS variants when the rec touches retention or reactivation. Facebook works well; TikTok and email less so in BD market.
 - Multiple variants per channel are good — A/B variants for SMS, two FB post angles, three ad-copy hooks.
 - If the rec requires human creative (photo / video / in-store production), produce a tight production brief as a piece with assetType: visual-brief or video-brief. Brief should list shots, vibe, format, deliverable spec.
@@ -258,9 +259,13 @@ export async function runDraftGeneration(
 
   // Minimal business context — enough to ground the copy without paying
   // for the full snapshot a second time. The audit summary captures the
-  // numerical state already.
+  // numerical state already. Today's date is included so the model can
+  // resolve "expires in 14 days" / "valid till X" into absolute dates
+  // rather than emitting [DATE+14] template placeholders.
+  const today = new Date().toISOString().slice(0, 10);
   const baseContext = `Business: ${audit.business.name}
 Currency: ${audit.business.currency}  ·  Timezone: ${audit.business.timezone}
+Today: ${today}  (use this when resolving expiry / validity dates into absolute dates)
 
 Audit summary (your earlier work):
 """

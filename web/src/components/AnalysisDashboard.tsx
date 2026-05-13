@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { AnalysisView } from './AnalysisView';
 import { OperationalStatsCard } from './OperationalStatsCard';
 import type { AnalysisResult } from '@/lib/ai/analyze';
-import type { AnalysisListItem, DraftsByRecIndex } from '@/lib/analyses';
+import type { AnalysisListItem, CompletionsByKey, DraftsByRecIndex } from '@/lib/analyses';
 import type { DraftRow } from '@/lib/drafts';
 import type { SmsSendRow } from '@/lib/sms-sends';
 
@@ -15,6 +15,7 @@ interface Current {
   id: string;
   result: AnalysisResult;
   drafts: DraftsByRecIndex;
+  completions: CompletionsByKey;
 }
 
 export function AnalysisDashboard({
@@ -38,6 +39,7 @@ export function AnalysisDashboard({
     Record<string, SmsSendRow | null>
   >({});
   const [smsError, setSmsError] = useState<string | null>(null);
+  const [togglingCompletionKey, setTogglingCompletionKey] = useState<string | null>(null);
   /// Bumped after every state-changing action so the ActivityPanel
   /// re-fetches its timeline. Stats are derived client-side from
   /// `current.drafts` so they update instantly without waiting.
@@ -61,8 +63,8 @@ export function AnalysisDashboard({
         throw new Error('message' in body ? body.message : `HTTP ${res.status}`);
       }
 
-      // Fresh analysis means no drafts yet.
-      setCurrent({ id: body.id, result: body.result, drafts: {} });
+      // Fresh analysis means no drafts (and therefore no completions).
+      setCurrent({ id: body.id, result: body.result, drafts: {}, completions: {} });
       setStatus('idle');
       bumpActivity();
 
@@ -84,10 +86,20 @@ export function AnalysisDashboard({
     try {
       const res = await fetch(`/api/analyses/${id}`);
       const body = (await res.json()) as
-        | { id: string; result: AnalysisResult; drafts: DraftsByRecIndex }
+        | {
+            id: string;
+            result: AnalysisResult;
+            drafts: DraftsByRecIndex;
+            completions: CompletionsByKey;
+          }
         | { error: string };
       if (!res.ok || 'error' in body) return;
-      setCurrent({ id: body.id, result: body.result, drafts: body.drafts });
+      setCurrent({
+        id: body.id,
+        result: body.result,
+        drafts: body.drafts,
+        completions: body.completions ?? {},
+      });
       bumpActivity();
     } catch {
       // Swallow — list rows that fail just stay un-selected.
@@ -169,7 +181,12 @@ export function AnalysisDashboard({
     }
   }
 
-  async function sendSms(draftId: string, pieceIndex: number, phone: string) {
+  async function sendSms(
+    draftId: string,
+    pieceIndex: number,
+    phone: string,
+    bodyOverride: string | null,
+  ) {
     const key = `${draftId}:${pieceIndex}`;
     if (sendingPieceKey !== null) return;
     setSendingPieceKey(key);
@@ -178,7 +195,11 @@ export function AnalysisDashboard({
       const res = await fetch(`/api/drafts/${encodeURIComponent(draftId)}/send-sms`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pieceIndex, phone }),
+        body: JSON.stringify({
+          pieceIndex,
+          phone,
+          ...(bodyOverride != null ? { body: bodyOverride } : {}),
+        }),
       });
       const body = (await res.json()) as
         | { event: SmsSendRow }
@@ -187,6 +208,11 @@ export function AnalysisDashboard({
       if ('event' in body && body.event) {
         // Whether SENT or PROVIDER_ERROR, persist the result so the user sees it.
         setLastSendResultsByPiece((prev) => ({ ...prev, [key]: body.event! }));
+        // Re-fetch completions so the auto-mark from a successful send
+        // shows up immediately. Cheap query — one DB read.
+        if (body.event.status === 'SENT' && current) {
+          void refetchCompletions(current.id);
+        }
         bumpActivity();
       }
       if (!res.ok || 'error' in body) {
@@ -199,6 +225,70 @@ export function AnalysisDashboard({
       setSmsError(err instanceof Error ? err.message : 'unknown error');
     } finally {
       setSendingPieceKey(null);
+    }
+  }
+
+  async function toggleCompletion(
+    draftId: string,
+    pieceIndex: number,
+    currentlyComplete: boolean,
+  ) {
+    const key = `${draftId}:${pieceIndex}`;
+    if (togglingCompletionKey !== null) return;
+    setTogglingCompletionKey(key);
+    try {
+      const method = currentlyComplete ? 'DELETE' : 'POST';
+      const res = await fetch(
+        `/api/drafts/${encodeURIComponent(draftId)}/pieces/${pieceIndex}/complete`,
+        { method, headers: { 'Content-Type': 'application/json' } },
+      );
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(text.length > 0 ? text.slice(0, 200) : `HTTP ${res.status}`);
+      }
+      setCurrent((prev) => {
+        if (!prev) return prev;
+        const completions = { ...prev.completions };
+        if (currentlyComplete) {
+          delete completions[key];
+        } else {
+          completions[key] = {
+            id: 'pending',
+            draftId,
+            pieceIndex,
+            notes: null,
+            source: 'manual',
+            completedAt: new Date().toISOString(),
+          };
+        }
+        return { ...prev, completions };
+      });
+      bumpActivity();
+    } catch (err: unknown) {
+      // Surface via the existing draftError slot — same UI corner the
+      // user already scans for problems.
+      setDraftError({
+        recIndex: -1,
+        message: err instanceof Error ? err.message : 'unknown error',
+      });
+    } finally {
+      setTogglingCompletionKey(null);
+    }
+  }
+
+  async function refetchCompletions(analysisId: string) {
+    try {
+      const res = await fetch(`/api/analyses/${encodeURIComponent(analysisId)}`);
+      if (!res.ok) return;
+      const body = (await res.json()) as {
+        completions?: CompletionsByKey;
+      };
+      if (!body.completions) return;
+      setCurrent((prev) =>
+        prev && prev.id === analysisId ? { ...prev, completions: body.completions! } : prev,
+      );
+    } catch {
+      // Best-effort; ignore.
     }
   }
 
@@ -344,17 +434,23 @@ export function AnalysisDashboard({
             analysisId={current.id}
             result={current.result}
             drafts={current.drafts}
+            completions={current.completions}
             draftingIndex={draftingIndex}
             refiningDraftId={refiningDraftId}
             updatingStatusDraftId={updatingStatusDraftId}
             sendingPieceKey={sendingPieceKey}
             lastSendResultsByPiece={lastSendResultsByPiece}
+            togglingCompletionKey={togglingCompletionKey}
             activityRefreshKey={activityRefreshKey}
             onDraft={draftRec}
             onRefine={refineDraft}
             onSetStatus={setDraftStatus}
             onSendSms={sendSms}
-            onSegmentBlastSent={bumpActivity}
+            onSegmentBlastSent={() => {
+              bumpActivity();
+              if (current) void refetchCompletions(current.id);
+            }}
+            onToggleCompletion={toggleCompletion}
           />
         ) : status !== 'running' ? (
           <div className="border border-dashed border-zinc-300 dark:border-zinc-800 p-12 text-center text-zinc-500">

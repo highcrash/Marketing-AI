@@ -117,9 +117,36 @@ model CampaignDraft {
   smsBlastEvents SmsBlastEvent[]
   scheduledSends ScheduledSend[]
   recurringSchedules RecurringSchedule[]
+  pieceCompletions   PieceCompletion[]
 
   @@index([analysisId, recIndex])
   @@index([parentDraftId])
+}
+
+/// User-marked "I did this myself" toggle on a draft piece. Covers
+/// every piece type — SMS sent through a different provider, visual
+/// briefs handed to a designer, menu changes made directly in Restora,
+/// in-store cards printed, etc. The integrated SMS-send path also
+/// auto-marks completion when a piece sends successfully through
+/// Restora, so the dashboard's completion view is uniform regardless
+/// of how the work actually happened.
+///
+/// One row per (draftId, pieceIndex). Unchecking deletes the row.
+model PieceCompletion {
+  id          String   @id @default(cuid())
+  draftId     String
+  pieceIndex  Int
+  /// Free-text notes the user attached to the completion ("sent via
+  /// Twilio campaign id ABC123", "menu updated 14 May 2pm", etc.).
+  notes       String?
+  /// Distinguishes self-marked vs auto-marked completions.
+  source      String   @default("manual")
+  completedAt DateTime @default(now())
+
+  draft CampaignDraft @relation(fields: [draftId], references: [id])
+
+  @@unique([draftId, pieceIndex])
+  @@index([completedAt])
 }
 
 /// One row per attempted SMS send (test or production). Persisted

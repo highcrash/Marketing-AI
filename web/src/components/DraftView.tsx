@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, Clock, Copy, RotateCcw, Send, Sparkles, Users, X } from 'lucide-react';
+import { Check, CheckCircle2, Circle, Clock, Copy, RotateCcw, Send, Sparkles, Users, X } from 'lucide-react';
 
 import type { DraftPiece } from '@/lib/ai/draft';
 import type { DraftRow } from '@/lib/drafts';
+import type { PieceCompletionRow } from '@/lib/piece-completions';
 import type { SmsSendRow } from '@/lib/sms-sends';
 import { SegmentBlastPanel } from './SegmentBlastPanel';
 import { SchedulePanel } from './SchedulePanel';
@@ -51,22 +52,28 @@ export function DraftView({
   isUpdatingStatus,
   sendingPieceIndex,
   lastSendResultByPiece,
+  completionsByPiece,
+  togglingPieceIndex,
   onRefine,
   onSetStatus,
   onSendSms,
   onSegmentBlastSent,
+  onToggleCompletion,
 }: {
   draft: DraftRow;
   isRefining: boolean;
   isUpdatingStatus: boolean;
   sendingPieceIndex: number | null;
   lastSendResultByPiece: Record<number, SmsSendRow | null>;
+  completionsByPiece: Record<number, PieceCompletionRow | null>;
+  togglingPieceIndex: number | null;
   onRefine: (feedback: string) => void;
   onSetStatus: (status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED') => void;
-  onSendSms: (pieceIndex: number, phone: string) => void;
+  onSendSms: (pieceIndex: number, phone: string, bodyOverride: string | null) => void;
   /// Bubbled up after a segment blast completes (success or partial) so
   /// the parent activity feed can re-fetch.
   onSegmentBlastSent: () => void;
+  onToggleCompletion: (pieceIndex: number, currentlyComplete: boolean) => void;
 }) {
   const canSendSms = draft.status === 'APPROVED';
   const payload = draft.payload;
@@ -145,9 +152,14 @@ export function DraftView({
               canSendSms={canSendSms}
               isSendingSms={sendingPieceIndex === i}
               lastSendResult={lastSendResultByPiece[i] ?? null}
+              completion={completionsByPiece[i] ?? null}
+              isTogglingCompletion={togglingPieceIndex === i}
               draftId={draft.id}
-              onSendSms={(phone) => onSendSms(i, phone)}
+              onSendSms={(phone, body) => onSendSms(i, phone, body)}
               onSegmentBlastSent={onSegmentBlastSent}
+              onToggleCompletion={(currentlyComplete) =>
+                onToggleCompletion(i, currentlyComplete)
+              }
             />
           ))}
         </div>
@@ -313,27 +325,38 @@ function PieceCard({
   canSendSms,
   isSendingSms,
   lastSendResult,
+  completion,
+  isTogglingCompletion,
   draftId,
   onSendSms,
   onSegmentBlastSent,
+  onToggleCompletion,
 }: {
   piece: DraftPiece;
   pieceIndex: number;
   canSendSms: boolean;
   isSendingSms: boolean;
   lastSendResult: SmsSendRow | null;
+  completion: PieceCompletionRow | null;
+  isTogglingCompletion: boolean;
   draftId: string;
-  onSendSms: (phone: string) => void;
+  onSendSms: (phone: string, bodyOverride: string | null) => void;
   onSegmentBlastSent: () => void;
+  onToggleCompletion: (currentlyComplete: boolean) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [showSendForm, setShowSendForm] = useState(false);
   const [showBlastForm, setShowBlastForm] = useState(false);
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [phone, setPhone] = useState('');
+  /// Per-form editable body. Reset to piece.content whenever the user
+  /// opens the form fresh — they can edit before sending without
+  /// mutating the canonical draft.
+  const [editedBody, setEditedBody] = useState(piece.content);
   const isBrief = BRIEF_ASSET_TYPES.includes(piece.assetType);
   const isSmsPiece = piece.assetType === 'sms';
   const showSmsControls = isSmsPiece && canSendSms;
+  const isComplete = !!completion;
 
   async function copy() {
     await navigator.clipboard.writeText(piece.content);
@@ -342,17 +365,43 @@ function PieceCard({
   }
 
   function submitSend() {
-    const trimmed = phone.trim();
-    if (trimmed.length < 6) return;
-    onSendSms(trimmed);
+    const trimmedPhone = phone.trim();
+    if (trimmedPhone.length < 6) return;
+    const trimmedBody = editedBody.trim();
+    if (trimmedBody.length === 0) return;
+    // Only send the override when it differs from the canonical content
+    // — keeps the server-side audit row cleaner.
+    const override = trimmedBody !== piece.content ? trimmedBody : null;
+    onSendSms(trimmedPhone, override);
     setShowSendForm(false);
     setPhone('');
+    setEditedBody(piece.content);
   }
 
   return (
-    <div className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
-      <header className="flex items-center justify-between gap-2 px-3 py-2 border-b border-zinc-100 dark:border-zinc-900 bg-zinc-50 dark:bg-zinc-900">
+    <div
+      className={`border ${isComplete ? 'border-emerald-300 dark:border-emerald-900' : 'border-zinc-200 dark:border-zinc-800'} bg-white dark:bg-zinc-950`}
+    >
+      <header
+        className={`flex items-center justify-between gap-2 px-3 py-2 border-b border-zinc-100 dark:border-zinc-900 ${isComplete ? 'bg-emerald-50 dark:bg-emerald-950/30' : 'bg-zinc-50 dark:bg-zinc-900'}`}
+      >
         <div className="flex items-center gap-2 text-[11px]">
+          <button
+            onClick={() => onToggleCompletion(isComplete)}
+            disabled={isTogglingCompletion}
+            className={`inline-flex items-center justify-center ${isComplete ? 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700' : 'text-zinc-400 hover:text-emerald-600'} disabled:opacity-50`}
+            title={
+              isComplete
+                ? completion?.source === 'integrated-sms-send'
+                  ? 'Done · sent via Restora'
+                  : completion?.source === 'integrated-sms-blast'
+                  ? 'Done · blasted via Restora'
+                  : 'Done · click to un-mark'
+                : 'Mark this piece as done (e.g. sent externally, brief delivered, change made)'
+            }
+          >
+            {isComplete ? <CheckCircle2 size={14} /> : <Circle size={14} />}
+          </button>
           <span className="px-1.5 py-0.5 bg-zinc-200 dark:bg-zinc-800 uppercase tracking-wider text-[10px] text-zinc-700 dark:text-zinc-300">
             {ASSET_TYPE_LABEL[piece.assetType]}
           </span>
@@ -421,6 +470,7 @@ function PieceCard({
               onClick={() => {
                 setShowSendForm(false);
                 setPhone('');
+                setEditedBody(piece.content);
               }}
               className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
               aria-label="Cancel"
@@ -428,11 +478,37 @@ function PieceCard({
               <X size={14} />
             </button>
           </div>
+          <label className="block">
+            <span className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">
+              SMS body (edit before sending — fix any [DATE+X] / placeholders)
+            </span>
+            <textarea
+              value={editedBody}
+              onChange={(e) => setEditedBody(e.target.value)}
+              rows={Math.min(8, Math.max(3, editedBody.split('\n').length + 1))}
+              maxLength={1000}
+              disabled={isSendingSms}
+              className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 placeholder:text-zinc-400 focus:outline-none focus:border-emerald-600 font-sans resize-y"
+            />
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-[10px] text-zinc-500">
+                {editedBody.length} chars
+                {editedBody !== piece.content && ' · edited'}
+              </span>
+              {editedBody !== piece.content && (
+                <button
+                  onClick={() => setEditedBody(piece.content)}
+                  className="text-[10px] text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                >
+                  Reset to original
+                </button>
+              )}
+            </div>
+          </label>
           <input
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="+8801710330040"
-            autoFocus
             disabled={isSendingSms}
             onKeyDown={(e) => {
               if (e.key === 'Enter') submitSend();
@@ -445,7 +521,7 @@ function PieceCard({
             </span>
             <button
               onClick={submitSend}
-              disabled={isSendingSms || phone.trim().length < 6}
+              disabled={isSendingSms || phone.trim().length < 6 || editedBody.trim().length === 0}
               className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
             >
               <Send size={11} />

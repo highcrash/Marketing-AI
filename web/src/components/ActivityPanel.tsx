@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Check,
+  CheckCircle2,
   FileText,
   MessageSquare,
   Send,
@@ -54,6 +55,7 @@ const KIND_ICON = {
   status: Check,
   send: Send,
   blast: Users,
+  completion: CheckCircle2,
 };
 
 export function ActivityPanel({

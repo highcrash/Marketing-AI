@@ -3,12 +3,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getDraftById } from '@/lib/drafts';
 import { getOrCreateBusinessFromEnv } from '@/lib/business';
-import { RestoraClient, RestoraApiError } from '@/lib/restora-client';
-import {
-  createPendingSmsSend,
-  listSendsByDraftGroupedByPiece,
-  markSmsSendResult,
-} from '@/lib/sms-sends';
+import { executeSingleSmsSend, SendExecutionError } from '@/lib/execute-sends';
+import { listSendsByDraftGroupedByPiece } from '@/lib/sms-sends';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -17,6 +13,10 @@ interface PostBody {
   pieceIndex?: unknown;
   phone?: unknown;
   campaignTag?: unknown;
+  /// Optional user-edited body. When supplied, replaces piece.content
+  /// for THIS send only (piece.content stays untouched). Lets the user
+  /// fix placeholder leftovers like [DATE+14] before the SMS goes out.
+  body?: unknown;
 }
 
 const PHONE_RE = /^[+0-9()\-\s]{6,20}$/;
@@ -30,6 +30,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const campaignTag =
     typeof body.campaignTag === 'string' && body.campaignTag.trim().length > 0
       ? body.campaignTag.trim().slice(0, 120)
+      : null;
+  const bodyOverride =
+    typeof body.body === 'string' && body.body.trim().length > 0
+      ? body.body.trim()
       : null;
 
   if (pieceIndex == null || pieceIndex < 0) {
@@ -48,72 +52,31 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   try {
     const business = await getOrCreateBusinessFromEnv();
 
-    const draft = await getDraftById(draftId);
-    if (!draft) {
-      return NextResponse.json({ error: 'draft_not_found' }, { status: 404 });
-    }
-
-    // Verify ownership via the parent Analysis → Business chain.
-    const analysisRow = await prisma.analysis.findFirst({
-      where: { id: draft.analysisId, businessId: business.id },
-      select: { id: true },
-    });
-    if (!analysisRow) {
-      return NextResponse.json({ error: 'draft_not_found' }, { status: 404 });
-    }
-
-    if (draft.status !== 'APPROVED') {
-      return NextResponse.json(
-        { error: 'not_approved', message: 'Only approved drafts can be sent' },
-        { status: 409 },
-      );
-    }
-
-    const piece = draft.payload.pieces[pieceIndex];
-    if (!piece || piece.assetType !== 'sms') {
-      return NextResponse.json(
-        { error: 'bad_piece', message: 'pieceIndex does not point to an SMS piece' },
-        { status: 400 },
-      );
-    }
-
-    // Audit FIRST so we have a row even if the upstream call hard-fails.
-    const event = await createPendingSmsSend({
+    const event = await executeSingleSmsSend({
+      business,
       draftId,
       pieceIndex,
-      toPhone: phoneRaw,
-      body: piece.content,
+      phone: phoneRaw,
       campaignTag,
+      bodyOverride,
     });
 
-    const restora = new RestoraClient(business.baseUrl, business.apiKey);
-    try {
-      const result = await restora.sendSms({
-        phone: phoneRaw,
-        body: piece.content,
-        campaignTag: campaignTag ?? undefined,
-      });
-
-      const updated = await markSmsSendResult(event.id, {
-        status: result.data.ok ? 'SENT' : 'PROVIDER_ERROR',
-        providerRequestId: result.data.providerRequestId,
-        providerStatus: result.data.status,
-        error: result.data.error,
-      });
-      return NextResponse.json({ event: updated });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'unknown error';
-      const isExternalError = err instanceof RestoraApiError;
-      const updated = await markSmsSendResult(event.id, {
-        status: isExternalError ? 'PROVIDER_ERROR' : 'FAILED',
-        error: message,
-      });
+    // executeSingleSmsSend persists FAILED / PROVIDER_ERROR rows too;
+    // the route returns them with a 502 so the client can show the
+    // error inline while still keeping the audit row visible.
+    if (event.status !== 'SENT') {
       return NextResponse.json(
-        { event: updated, error: 'send_failed', message },
+        { event, error: 'send_failed', message: event.error ?? event.status },
         { status: 502 },
       );
     }
+    return NextResponse.json({ event });
   } catch (err: unknown) {
+    if (err instanceof SendExecutionError) {
+      const code = err.code;
+      const status = code === 'not_approved' ? 409 : code === 'draft_not_found' ? 404 : 400;
+      return NextResponse.json({ error: code, message: err.message }, { status });
+    }
     const message = err instanceof Error ? err.message : 'unknown error';
     return NextResponse.json({ error: 'unexpected', message }, { status: 500 });
   }
