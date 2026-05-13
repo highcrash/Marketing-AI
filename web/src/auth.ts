@@ -36,13 +36,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     authorized({ request, auth: session }) {
       const { pathname } = request.nextUrl;
       // Public paths: login, register, the NextAuth API routes,
-      // the register API, and Next internals (handled separately in
-      // middleware matcher but kept here for belt-and-braces).
+      // the register API, and the cron webhook (which is protected
+      // by CRON_SECRET, not by NextAuth — Vercel Cron and any
+      // external cron-as-a-service can't carry a session cookie).
       if (
         pathname === '/login' ||
         pathname === '/register' ||
         pathname.startsWith('/api/auth') ||
-        pathname.startsWith('/api/register')
+        pathname.startsWith('/api/register') ||
+        pathname.startsWith('/api/cron')
       ) {
         return true;
       }
