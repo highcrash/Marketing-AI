@@ -87,10 +87,19 @@ model CampaignDraft {
   cacheWriteTokens Int
   /// JSON-serialised CampaignDraftPayload (see lib/ai/draft.ts).
   payload          String
+  /// When this draft is a refinement of a previous one, the user's
+  /// free-text feedback that prompted it. Null on initial drafts.
+  feedback         String?
+  /// FK to the draft this one was refined from. Forms a chain of
+  /// versions for the same recommendation. Null on the first draft.
+  parentDraftId    String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  analysis Analysis @relation(fields: [analysisId], references: [id])
+  analysis     Analysis        @relation(fields: [analysisId], references: [id])
+  parentDraft  CampaignDraft?  @relation("DraftRefinement", fields: [parentDraftId], references: [id])
+  refinedDrafts CampaignDraft[] @relation("DraftRefinement")
 
   @@index([analysisId, recIndex])
+  @@index([parentDraftId])
 }

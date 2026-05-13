@@ -15,6 +15,13 @@ import { loadSkillsBySlug, type Skill } from './skills';
 
 export interface DraftOptions {
   model?: string;
+  /// When refining an existing draft, the previous draft's payload + the
+  /// user's free-text feedback. The system prompt switches into "iterate
+  /// on this prior draft" mode.
+  refinement?: {
+    previous: CampaignDraftPayload;
+    feedback: string;
+  };
 }
 
 export type AssetType =
@@ -204,6 +211,12 @@ const DRAFT_TOOL = {
   },
 };
 
+const SYSTEM_PROMPT_REFINE_SUFFIX = `\n\nIMPORTANT — this call is a REFINEMENT of a previous draft you wrote. The user is iterating, not starting over. The previous draft and the user's feedback are in the user message. You MUST:
+- Keep what the user implicitly endorsed by not commenting on it.
+- Apply the feedback literally — if the user asks for a Bengali variant, produce a Bengali piece; if they want a shorter SMS, shorten it.
+- Output a COMPLETE draft, not a diff. Every piece the user is keeping must reappear in your output (you can tweak it if the feedback implies it should change).
+- Don't dilute earlier strong choices "just to look like you changed things" — only change what the feedback (or its clear implications) demands.`;
+
 const SYSTEM_PROMPT = `You are the same marketing strategist who wrote the audit being shown to you. The user has picked ONE of your recommendations and asked you to turn it into a real campaign they can launch this week.
 
 Your output will be copy-pasted into Facebook, SMS, Foodpanda, in-store cards, and email tools. So:
@@ -246,7 +259,7 @@ export async function runDraftGeneration(
   // Minimal business context — enough to ground the copy without paying
   // for the full snapshot a second time. The audit summary captures the
   // numerical state already.
-  const userMessage = `Business: ${audit.business.name}
+  const baseContext = `Business: ${audit.business.name}
 Currency: ${audit.business.currency}  ·  Timezone: ${audit.business.timezone}
 
 Audit summary (your earlier work):
@@ -270,9 +283,29 @@ First actions this week (your own list):
 ${rec.firstActionsThisWeek.map((a) => `- ${a}`).join('\n')}
 
 Requires human creative: ${rec.requiresHumanForExecution ? 'yes' : 'no'}
+"""`;
+
+  const userMessage = options.refinement
+    ? `${baseContext}
+
+You previously drafted this campaign:
+\`\`\`json
+${JSON.stringify(options.refinement.previous, null, 2)}
+\`\`\`
+
+The user reviewed it and gave you this feedback:
+"""
+${options.refinement.feedback}
 """
 
+Produce the REFINED draft by calling submit_campaign_draft. Apply the feedback literally. Preserve what wasn't called out unless the feedback's clear implication is that it should change. Output the COMPLETE draft, not a diff.`
+    : `${baseContext}
+
 Turn this into an executable campaign by calling submit_campaign_draft. Every piece must be literal, ready-to-paste content (or a tight brief for human creative). Match the timeline and tactics to your audit's data points.`;
+
+  const systemText = options.refinement
+    ? `${SYSTEM_PROMPT}${SYSTEM_PROMPT_REFINE_SUFFIX}`
+    : SYSTEM_PROMPT;
 
   const response = await anthropic.messages.create({
     model,
@@ -280,7 +313,7 @@ Turn this into an executable campaign by calling submit_campaign_draft. Every pi
     tools: [DRAFT_TOOL],
     tool_choice: { type: 'tool', name: DRAFT_TOOL.name },
     system: [
-      { type: 'text', text: SYSTEM_PROMPT },
+      { type: 'text', text: systemText },
       // Skills are the long-static part — cache them so repeat drafts
       // against the same skill set are cheap.
       {

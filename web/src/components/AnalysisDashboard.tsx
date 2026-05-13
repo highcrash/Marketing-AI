@@ -29,6 +29,7 @@ export function AnalysisDashboard({
   const [elapsedMs, setElapsedMs] = useState(0);
   const [draftingIndex, setDraftingIndex] = useState<number | null>(null);
   const [draftError, setDraftError] = useState<{ recIndex: number; message: string } | null>(null);
+  const [refiningDraftId, setRefiningDraftId] = useState<string | null>(null);
 
   async function runAnalysis() {
     setStatus('running');
@@ -114,6 +115,44 @@ export function AnalysisDashboard({
     }
   }
 
+  async function refineDraft(draftId: string, feedback: string) {
+    if (!current || refiningDraftId !== null) return;
+    setRefiningDraftId(draftId);
+    setDraftError(null);
+    try {
+      const res = await fetch(`/api/drafts/${encodeURIComponent(draftId)}/refine`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feedback }),
+      });
+      const body = (await res.json()) as
+        | { draft: DraftRow }
+        | { error: string; message: string };
+
+      if (!res.ok || 'error' in body) {
+        throw new Error('message' in body ? body.message : `HTTP ${res.status}`);
+      }
+
+      setCurrent((prev) =>
+        prev
+          ? {
+              ...prev,
+              drafts: { ...prev.drafts, [body.draft.recIndex]: body.draft },
+            }
+          : prev,
+      );
+    } catch (err: unknown) {
+      // We don't have a stable recIndex here without re-deriving it, so
+      // surface the error generically via the same sidebar slot.
+      setDraftError({
+        recIndex: -1,
+        message: err instanceof Error ? err.message : 'unknown error',
+      });
+    } finally {
+      setRefiningDraftId(null);
+    }
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-6 py-6 grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6">
       <aside className="space-y-4">
@@ -153,7 +192,9 @@ export function AnalysisDashboard({
         {draftError && (
           <div className="border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 p-3">
             <p className="text-xs font-medium text-amber-700 dark:text-amber-300 mb-1">
-              Draft failed (rec #{draftError.recIndex + 1})
+              {draftError.recIndex >= 0
+                ? `Draft failed (rec #${draftError.recIndex + 1})`
+                : 'Refine failed'}
             </p>
             <p className="text-[11px] text-amber-600 dark:text-amber-400 font-mono break-all">
               {draftError.message}
@@ -202,7 +243,9 @@ export function AnalysisDashboard({
             result={current.result}
             drafts={current.drafts}
             draftingIndex={draftingIndex}
+            refiningDraftId={refiningDraftId}
             onDraft={draftRec}
+            onRefine={refineDraft}
           />
         ) : status !== 'running' ? (
           <div className="border border-dashed border-zinc-300 dark:border-zinc-800 p-12 text-center text-zinc-500">

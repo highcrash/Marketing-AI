@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Copy } from 'lucide-react';
+import { Copy, Sparkles, X } from 'lucide-react';
 
-import type { CampaignDraftPayload, DraftPiece } from '@/lib/ai/draft';
+import type { DraftPiece } from '@/lib/ai/draft';
 import type { DraftRow } from '@/lib/drafts';
 
 const CHANNEL_LABEL: Record<string, string> = {
@@ -36,14 +36,38 @@ function channelLabel(c: string): string {
   return CHANNEL_LABEL[c.toLowerCase()] ?? c;
 }
 
-export function DraftView({ draft }: { draft: DraftRow }) {
+export function DraftView({
+  draft,
+  isRefining,
+  onRefine,
+}: {
+  draft: DraftRow;
+  isRefining: boolean;
+  onRefine: (feedback: string) => void;
+}) {
   const payload = draft.payload;
+  const [showRefineForm, setShowRefineForm] = useState(false);
+  const [feedback, setFeedback] = useState('');
+
+  function submitRefine() {
+    const trimmed = feedback.trim();
+    if (trimmed.length < 4) return;
+    onRefine(trimmed);
+    setFeedback('');
+    setShowRefineForm(false);
+  }
+
   return (
     <div className="border border-red-300 dark:border-red-900 bg-red-50/40 dark:bg-red-950/20 p-5 mt-3 space-y-5">
       <header>
         <div className="flex items-baseline justify-between gap-2 flex-wrap">
-          <h6 className="font-semibold text-zinc-900 dark:text-zinc-100">
+          <h6 className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
             Campaign draft · {payload.title}
+            {draft.versionCount > 1 && (
+              <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+                v{draft.version} of {draft.versionCount}
+              </span>
+            )}
           </h6>
           <span className="text-[10px] uppercase tracking-widest text-zinc-500">
             {new Date(draft.createdAt).toLocaleString()}
@@ -64,6 +88,14 @@ export function DraftView({ draft }: { draft: DraftRow }) {
           <span className="text-zinc-500">·</span>
           <span>{payload.launchTimeline}</span>
         </div>
+        {draft.feedback && (
+          <p className="mt-3 text-xs text-zinc-600 dark:text-zinc-400 border-l-2 border-red-300 dark:border-red-800 pl-3">
+            <span className="font-medium text-zinc-500 uppercase tracking-wider text-[10px] mr-2">
+              Refined with feedback
+            </span>
+            <span className="italic">&ldquo;{draft.feedback}&rdquo;</span>
+          </p>
+        )}
       </header>
 
       <section>
@@ -138,6 +170,63 @@ export function DraftView({ draft }: { draft: DraftRow }) {
           </ul>
         </section>
       )}
+
+      <footer className="border-t border-zinc-200 dark:border-zinc-800 pt-3">
+        {showRefineForm ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] uppercase tracking-widest text-zinc-500">
+                Refine this draft
+              </p>
+              <button
+                onClick={() => {
+                  setShowRefineForm(false);
+                  setFeedback('');
+                }}
+                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                aria-label="Cancel"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <textarea
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              placeholder="e.g. Make the SMS friendlier and add a Bengali variant. Drop the FB ad piece — we're not running paid yet."
+              rows={3}
+              maxLength={2000}
+              autoFocus
+              disabled={isRefining}
+              className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 placeholder:text-zinc-400 focus:outline-none focus:border-red-600 resize-y"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submitRefine();
+              }}
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-zinc-500">
+                ⌘/Ctrl + Enter to submit · {feedback.length}/2000
+              </span>
+              <button
+                onClick={submitRefine}
+                disabled={isRefining || feedback.trim().length < 4}
+                className="bg-red-600 hover:bg-red-700 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
+              >
+                <Sparkles size={11} />
+                {isRefining ? 'Refining…' : 'Refine draft'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowRefineForm(true)}
+            disabled={isRefining}
+            className="text-[10px] tracking-widest uppercase text-red-600 hover:text-red-700 disabled:text-zinc-400 inline-flex items-center gap-1"
+          >
+            <Sparkles size={11} />
+            {isRefining ? 'Refining…' : 'Refine with feedback'}
+          </button>
+        )}
+      </footer>
     </div>
   );
 }

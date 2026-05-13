@@ -14,12 +14,16 @@ export function RecommendationCard({
   rec,
   draft,
   isDrafting,
+  isRefining,
   onDraft,
+  onRefine,
 }: {
   rec: Recommendation;
   draft: DraftRow | undefined;
   isDrafting: boolean;
+  isRefining: boolean;
   onDraft: () => void;
+  onRefine: (feedback: string) => void;
 }) {
   return (
     <article className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-5">
@@ -85,17 +89,19 @@ export function RecommendationCard({
         )}
 
         <div className="ml-auto">
-          <button
-            onClick={onDraft}
-            disabled={isDrafting}
-            className="bg-red-600 hover:bg-red-700 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase"
-          >
-            {isDrafting ? 'Drafting…' : draft ? 'Re-draft' : 'Draft this campaign'}
-          </button>
+          {!draft && (
+            <button
+              onClick={onDraft}
+              disabled={isDrafting}
+              className="bg-red-600 hover:bg-red-700 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase"
+            >
+              {isDrafting ? 'Drafting…' : 'Draft this campaign'}
+            </button>
+          )}
         </div>
       </footer>
 
-      {draft && <DraftView draft={draft} />}
+      {draft && <DraftView draft={draft} isRefining={isRefining} onRefine={onRefine} />}
     </article>
   );
 }

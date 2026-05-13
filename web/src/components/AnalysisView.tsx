@@ -23,10 +23,19 @@ interface AnalysisViewProps {
   result: AnalysisResult;
   drafts: DraftsByRecIndex;
   draftingIndex: number | null;
+  refiningDraftId: string | null;
   onDraft: (recIndex: number) => void;
+  onRefine: (draftId: string, feedback: string) => void;
 }
 
-export function AnalysisView({ result, drafts, draftingIndex, onDraft }: AnalysisViewProps) {
+export function AnalysisView({
+  result,
+  drafts,
+  draftingIndex,
+  refiningDraftId,
+  onDraft,
+  onRefine,
+}: AnalysisViewProps) {
   // Keep recommendations in their original order so recIndex matches the
   // canonical position on the saved Analysis row (drafts reference recs by
   // index). We group visually within that ordering.
@@ -85,15 +94,20 @@ export function AnalysisView({ result, drafts, draftingIndex, onDraft }: Analysi
               {CATEGORY_LABEL[category as Recommendation['category']] ?? category}
             </h4>
             <div className="space-y-4">
-              {recs.map(({ rec, recIndex }) => (
-                <RecommendationCard
-                  key={recIndex}
-                  rec={rec}
-                  draft={drafts[recIndex]}
-                  isDrafting={draftingIndex === recIndex}
-                  onDraft={() => onDraft(recIndex)}
-                />
-              ))}
+              {recs.map(({ rec, recIndex }) => {
+                const draft = drafts[recIndex];
+                return (
+                  <RecommendationCard
+                    key={recIndex}
+                    rec={rec}
+                    draft={draft}
+                    isDrafting={draftingIndex === recIndex}
+                    isRefining={!!draft && refiningDraftId === draft.id}
+                    onDraft={() => onDraft(recIndex)}
+                    onRefine={(feedback) => draft && onRefine(draft.id, feedback)}
+                  />
+                );
+              })}
             </div>
           </div>
         ))}
