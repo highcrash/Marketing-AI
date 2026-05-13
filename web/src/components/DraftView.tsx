@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, Copy, RotateCcw, Sparkles, X } from 'lucide-react';
+import { Check, Copy, RotateCcw, Send, Sparkles, X } from 'lucide-react';
 
 import type { DraftPiece } from '@/lib/ai/draft';
 import type { DraftRow } from '@/lib/drafts';
+import type { SmsSendRow } from '@/lib/sms-sends';
 
 const STATUS_STYLES: Record<string, { label: string; pill: string }> = {
   PENDING_REVIEW: { label: 'Draft', pill: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300' },
@@ -46,15 +47,22 @@ export function DraftView({
   draft,
   isRefining,
   isUpdatingStatus,
+  sendingPieceIndex,
+  lastSendResultByPiece,
   onRefine,
   onSetStatus,
+  onSendSms,
 }: {
   draft: DraftRow;
   isRefining: boolean;
   isUpdatingStatus: boolean;
+  sendingPieceIndex: number | null;
+  lastSendResultByPiece: Record<number, SmsSendRow | null>;
   onRefine: (feedback: string) => void;
   onSetStatus: (status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED') => void;
+  onSendSms: (pieceIndex: number, phone: string) => void;
 }) {
+  const canSendSms = draft.status === 'APPROVED';
   const payload = draft.payload;
   const [showRefineForm, setShowRefineForm] = useState(false);
   const [feedback, setFeedback] = useState('');
@@ -124,7 +132,15 @@ export function DraftView({
         </p>
         <div className="space-y-3">
           {payload.pieces.map((piece, i) => (
-            <PieceCard key={i} piece={piece} />
+            <PieceCard
+              key={i}
+              piece={piece}
+              pieceIndex={i}
+              canSendSms={canSendSms}
+              isSendingSms={sendingPieceIndex === i}
+              lastSendResult={lastSendResultByPiece[i] ?? null}
+              onSendSms={(phone) => onSendSms(i, phone)}
+            />
           ))}
         </div>
       </section>
@@ -283,14 +299,40 @@ export function DraftView({
   );
 }
 
-function PieceCard({ piece }: { piece: DraftPiece }) {
+function PieceCard({
+  piece,
+  pieceIndex,
+  canSendSms,
+  isSendingSms,
+  lastSendResult,
+  onSendSms,
+}: {
+  piece: DraftPiece;
+  pieceIndex: number;
+  canSendSms: boolean;
+  isSendingSms: boolean;
+  lastSendResult: SmsSendRow | null;
+  onSendSms: (phone: string) => void;
+}) {
   const [copied, setCopied] = useState(false);
+  const [showSendForm, setShowSendForm] = useState(false);
+  const [phone, setPhone] = useState('');
   const isBrief = BRIEF_ASSET_TYPES.includes(piece.assetType);
+  const isSmsPiece = piece.assetType === 'sms';
+  const showSmsControls = isSmsPiece && canSendSms;
 
   async function copy() {
     await navigator.clipboard.writeText(piece.content);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  }
+
+  function submitSend() {
+    const trimmed = phone.trim();
+    if (trimmed.length < 6) return;
+    onSendSms(trimmed);
+    setShowSendForm(false);
+    setPhone('');
   }
 
   return (
@@ -303,24 +345,110 @@ function PieceCard({ piece }: { piece: DraftPiece }) {
           <span className="text-zinc-500">{channelLabel(piece.channel)}</span>
           <span className="text-zinc-600 dark:text-zinc-400">· {piece.title}</span>
         </div>
-        {!isBrief && (
-          <button
-            onClick={copy}
-            className="inline-flex items-center gap-1 text-[10px] text-zinc-600 dark:text-zinc-400 hover:text-red-600 px-2 py-0.5 border border-zinc-200 dark:border-zinc-800"
-          >
-            <Copy size={11} />
-            {copied ? 'Copied' : 'Copy'}
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          {!isBrief && (
+            <button
+              onClick={copy}
+              className="inline-flex items-center gap-1 text-[10px] text-zinc-600 dark:text-zinc-400 hover:text-red-600 px-2 py-0.5 border border-zinc-200 dark:border-zinc-800"
+            >
+              <Copy size={11} />
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          )}
+          {showSmsControls && !showSendForm && (
+            <button
+              onClick={() => setShowSendForm(true)}
+              disabled={isSendingSms}
+              className="inline-flex items-center gap-1 text-[10px] text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-300 disabled:text-zinc-500 px-2 py-0.5"
+            >
+              <Send size={11} />
+              {isSendingSms ? 'Sending…' : 'Send'}
+            </button>
+          )}
+        </div>
       </header>
+
       <pre className="px-3 py-3 text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap font-sans leading-relaxed">
         {piece.content}
       </pre>
+
       {piece.notes && (
         <p className="px-3 pb-3 text-[11px] text-zinc-500 border-t border-zinc-100 dark:border-zinc-900 pt-2">
           {piece.notes}
         </p>
       )}
+
+      {showSmsControls && showSendForm && (
+        <div className="border-t border-zinc-100 dark:border-zinc-900 bg-zinc-50/50 dark:bg-zinc-900/30 px-3 py-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] uppercase tracking-widest text-zinc-500">
+              Send this SMS via Restora
+            </p>
+            <button
+              onClick={() => {
+                setShowSendForm(false);
+                setPhone('');
+              }}
+              className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+              aria-label="Cancel"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <input
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="+8801710330040"
+            autoFocus
+            disabled={isSendingSms}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submitSend();
+            }}
+            className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 placeholder:text-zinc-400 focus:outline-none focus:border-emerald-600 font-mono"
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-zinc-500">
+              Sends through your Restora SMS provider · Enter to confirm
+            </span>
+            <button
+              onClick={submitSend}
+              disabled={isSendingSms || phone.trim().length < 6}
+              className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
+            >
+              <Send size={11} />
+              {isSendingSms ? 'Sending…' : 'Send SMS'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showSmsControls && lastSendResult && !showSendForm && (
+        <SendResultLine result={lastSendResult} />
+      )}
+    </div>
+  );
+}
+
+function SendResultLine({ result }: { result: SmsSendRow }) {
+  const isSuccess = result.status === 'SENT';
+  const styles = isSuccess
+    ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900'
+    : 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900';
+  return (
+    <div className={`border-t px-3 py-2 text-[11px] font-mono ${styles}`}>
+      <span className="font-medium">
+        {isSuccess ? '✓ Sent' : `✗ ${result.status}`}
+      </span>{' '}
+      to <span>{result.toPhone}</span>
+      {result.providerRequestId && (
+        <span className="text-zinc-500"> · req {result.providerRequestId}</span>
+      )}
+      {result.error && (
+        <span className="block mt-1 break-all whitespace-pre-wrap">{result.error}</span>
+      )}
+      <span className="text-zinc-500 ml-2">
+        {new Date(result.createdAt).toLocaleTimeString()}
+      </span>
     </div>
   );
 }

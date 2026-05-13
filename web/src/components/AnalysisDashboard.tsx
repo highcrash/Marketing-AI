@@ -6,6 +6,7 @@ import { AnalysisView } from './AnalysisView';
 import type { AnalysisResult } from '@/lib/ai/analyze';
 import type { AnalysisListItem, DraftsByRecIndex } from '@/lib/analyses';
 import type { DraftRow } from '@/lib/drafts';
+import type { SmsSendRow } from '@/lib/sms-sends';
 
 type Status = 'idle' | 'running' | 'error';
 
@@ -31,6 +32,11 @@ export function AnalysisDashboard({
   const [draftError, setDraftError] = useState<{ recIndex: number; message: string } | null>(null);
   const [refiningDraftId, setRefiningDraftId] = useState<string | null>(null);
   const [updatingStatusDraftId, setUpdatingStatusDraftId] = useState<string | null>(null);
+  const [sendingPieceKey, setSendingPieceKey] = useState<string | null>(null);
+  const [lastSendResultsByPiece, setLastSendResultsByPiece] = useState<
+    Record<string, SmsSendRow | null>
+  >({});
+  const [smsError, setSmsError] = useState<string | null>(null);
 
   async function runAnalysis() {
     setStatus('running');
@@ -153,6 +159,38 @@ export function AnalysisDashboard({
     }
   }
 
+  async function sendSms(draftId: string, pieceIndex: number, phone: string) {
+    const key = `${draftId}:${pieceIndex}`;
+    if (sendingPieceKey !== null) return;
+    setSendingPieceKey(key);
+    setSmsError(null);
+    try {
+      const res = await fetch(`/api/drafts/${encodeURIComponent(draftId)}/send-sms`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pieceIndex, phone }),
+      });
+      const body = (await res.json()) as
+        | { event: SmsSendRow }
+        | { event?: SmsSendRow; error: string; message: string };
+
+      if ('event' in body && body.event) {
+        // Whether SENT or PROVIDER_ERROR, persist the result so the user sees it.
+        setLastSendResultsByPiece((prev) => ({ ...prev, [key]: body.event! }));
+      }
+      if (!res.ok || 'error' in body) {
+        const msg = 'message' in body ? body.message : `HTTP ${res.status}`;
+        // Errors from the upstream send still get an event row + result line;
+        // only surface a banner error if we have nothing at all.
+        if (!('event' in body && body.event)) setSmsError(msg);
+      }
+    } catch (err: unknown) {
+      setSmsError(err instanceof Error ? err.message : 'unknown error');
+    } finally {
+      setSendingPieceKey(null);
+    }
+  }
+
   async function refineDraft(draftId: string, feedback: string) {
     if (!current || refiningDraftId !== null) return;
     setRefiningDraftId(draftId);
@@ -240,6 +278,17 @@ export function AnalysisDashboard({
           </div>
         )}
 
+        {smsError && (
+          <div className="border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 p-3">
+            <p className="text-xs font-medium text-amber-700 dark:text-amber-300 mb-1">
+              SMS send failed
+            </p>
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 font-mono break-all">
+              {smsError}
+            </p>
+          </div>
+        )}
+
         <div>
           <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2 px-1">
             Past runs · {list.length}
@@ -283,9 +332,12 @@ export function AnalysisDashboard({
             draftingIndex={draftingIndex}
             refiningDraftId={refiningDraftId}
             updatingStatusDraftId={updatingStatusDraftId}
+            sendingPieceKey={sendingPieceKey}
+            lastSendResultsByPiece={lastSendResultsByPiece}
             onDraft={draftRec}
             onRefine={refineDraft}
             onSetStatus={setDraftStatus}
+            onSendSms={sendSms}
           />
         ) : status !== 'running' ? (
           <div className="border border-dashed border-zinc-300 dark:border-zinc-800 p-12 text-center text-zinc-500">

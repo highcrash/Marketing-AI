@@ -167,6 +167,24 @@ export class RestoraClient {
     return (await res.json()) as Envelope<T>;
   }
 
+  private async post<T>(path: string, body: unknown): Promise<Envelope<T>> {
+    const url = `${this.baseUrl.replace(/\/$/, '')}${path}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      const msg = text.length > 0 ? text.slice(0, 300) : res.statusText;
+      throw new RestoraApiError(res.status, path, msg);
+    }
+    return (await res.json()) as Envelope<T>;
+  }
+
   getProfile() {
     return this.get<BusinessProfile>('/business/profile');
   }
@@ -237,5 +255,17 @@ export class RestoraClient {
   }
   getReviews() {
     return this.get<ReviewSummary>('/business/reviews');
+  }
+
+  /// Send a single SMS via the branch's configured SMS provider.
+  /// Returns: { ok, smsLogId, providerRequestId, status, error }.
+  sendSms(input: { phone: string; body: string; campaignTag?: string }) {
+    return this.post<{
+      ok: boolean;
+      smsLogId: string;
+      providerRequestId: string | null;
+      status: string;
+      error: string | null;
+    }>('/business/sms/send', input);
   }
 }

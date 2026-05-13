@@ -99,7 +99,39 @@ model CampaignDraft {
   analysis     Analysis        @relation(fields: [analysisId], references: [id])
   parentDraft  CampaignDraft?  @relation("DraftRefinement", fields: [parentDraftId], references: [id])
   refinedDrafts CampaignDraft[] @relation("DraftRefinement")
+  smsSendEvents SmsSendEvent[]
 
   @@index([analysisId, recIndex])
   @@index([parentDraftId])
+}
+
+/// One row per attempted SMS send (test or production). Persisted
+/// BEFORE the upstream call so even network failures get audited; the
+/// status is updated to SENT/FAILED after the Restora API call returns.
+///
+/// `pieceIndex` points into the draft's payload.pieces array at the
+/// time of send. If the draft is later re-drafted (which produces a
+/// new row, leaving this one alone), the index still resolves
+/// correctly against the original draft.
+model SmsSendEvent {
+  id                String   @id @default(cuid())
+  draftId           String
+  pieceIndex        Int
+  toPhone           String
+  body              String
+  campaignTag       String?
+  /// PENDING (in flight), SENT (success), FAILED (caught error),
+  /// PROVIDER_ERROR (Restora returned ok=false).
+  status            String   @default("PENDING")
+  /// `requestId` returned by Restora — useful for cross-referencing
+  /// against Restora's sms_logs row.
+  providerRequestId String?
+  providerStatus    String?
+  error             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  draft CampaignDraft @relation(fields: [draftId], references: [id])
+
+  @@index([draftId, createdAt])
 }

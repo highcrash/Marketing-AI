@@ -2,7 +2,10 @@
 
 import type { AnalysisResult, Recommendation } from '@/lib/ai/analyze';
 import type { DraftsByRecIndex } from '@/lib/analyses';
+import type { SmsSendRow } from '@/lib/sms-sends';
 import { RecommendationCard } from './RecommendationCard';
+
+const EMPTY_SENDS: Record<number, SmsSendRow | null> = {};
 
 const CATEGORY_LABEL: Record<Recommendation['category'], string> = {
   acquisition: 'Acquisition',
@@ -25,9 +28,14 @@ interface AnalysisViewProps {
   draftingIndex: number | null;
   refiningDraftId: string | null;
   updatingStatusDraftId: string | null;
+  /// Active SMS send keyed by `${draftId}:${pieceIndex}`. Null when nothing in flight.
+  sendingPieceKey: string | null;
+  /// Last send result per `${draftId}:${pieceIndex}` from the current session.
+  lastSendResultsByPiece: Record<string, SmsSendRow | null>;
   onDraft: (recIndex: number) => void;
   onRefine: (draftId: string, feedback: string) => void;
   onSetStatus: (draftId: string, status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED') => void;
+  onSendSms: (draftId: string, pieceIndex: number, phone: string) => void;
 }
 
 export function AnalysisView({
@@ -36,9 +44,12 @@ export function AnalysisView({
   draftingIndex,
   refiningDraftId,
   updatingStatusDraftId,
+  sendingPieceKey,
+  lastSendResultsByPiece,
   onDraft,
   onRefine,
   onSetStatus,
+  onSendSms,
 }: AnalysisViewProps) {
   // Keep recommendations in their original order so recIndex matches the
   // canonical position on the saved Analysis row (drafts reference recs by
@@ -100,6 +111,22 @@ export function AnalysisView({
             <div className="space-y-4">
               {recs.map(({ rec, recIndex }) => {
                 const draft = drafts[recIndex];
+                let sendingPieceIndex: number | null = null;
+                let perPieceSends: Record<number, SmsSendRow | null> = EMPTY_SENDS;
+                if (draft) {
+                  if (sendingPieceKey?.startsWith(`${draft.id}:`)) {
+                    const idx = Number(sendingPieceKey.slice(draft.id.length + 1));
+                    if (!Number.isNaN(idx)) sendingPieceIndex = idx;
+                  }
+                  const filtered: Record<number, SmsSendRow | null> = {};
+                  for (const [key, val] of Object.entries(lastSendResultsByPiece)) {
+                    if (key.startsWith(`${draft.id}:`)) {
+                      const idx = Number(key.slice(draft.id.length + 1));
+                      if (!Number.isNaN(idx)) filtered[idx] = val;
+                    }
+                  }
+                  perPieceSends = filtered;
+                }
                 return (
                   <RecommendationCard
                     key={recIndex}
@@ -108,9 +135,14 @@ export function AnalysisView({
                     isDrafting={draftingIndex === recIndex}
                     isRefining={!!draft && refiningDraftId === draft.id}
                     isUpdatingStatus={!!draft && updatingStatusDraftId === draft.id}
+                    sendingPieceIndex={sendingPieceIndex}
+                    lastSendResultByPiece={perPieceSends}
                     onDraft={() => onDraft(recIndex)}
                     onRefine={(feedback) => draft && onRefine(draft.id, feedback)}
                     onSetStatus={(status) => draft && onSetStatus(draft.id, status)}
+                    onSendSms={(pieceIndex, phone) =>
+                      draft && onSendSms(draft.id, pieceIndex, phone)
+                    }
                   />
                 );
               })}

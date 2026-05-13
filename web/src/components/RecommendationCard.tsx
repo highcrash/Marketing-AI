@@ -2,6 +2,7 @@
 
 import type { Recommendation } from '@/lib/ai/analyze';
 import type { DraftRow } from '@/lib/drafts';
+import type { SmsSendRow } from '@/lib/sms-sends';
 import { DraftView } from './DraftView';
 
 const PRIORITY_STYLES: Record<Recommendation['priority'], string> = {
@@ -16,18 +17,24 @@ export function RecommendationCard({
   isDrafting,
   isRefining,
   isUpdatingStatus,
+  sendingPieceIndex,
+  lastSendResultByPiece,
   onDraft,
   onRefine,
   onSetStatus,
+  onSendSms,
 }: {
   rec: Recommendation;
   draft: DraftRow | undefined;
   isDrafting: boolean;
   isRefining: boolean;
   isUpdatingStatus: boolean;
+  sendingPieceIndex: number | null;
+  lastSendResultByPiece: Record<number, SmsSendRow | null>;
   onDraft: () => void;
   onRefine: (feedback: string) => void;
   onSetStatus: (status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED') => void;
+  onSendSms: (pieceIndex: number, phone: string) => void;
 }) {
   return (
     <article className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-5">
@@ -110,8 +117,11 @@ export function RecommendationCard({
           draft={draft}
           isRefining={isRefining}
           isUpdatingStatus={isUpdatingStatus}
+          sendingPieceIndex={sendingPieceIndex}
+          lastSendResultByPiece={lastSendResultByPiece}
           onRefine={onRefine}
           onSetStatus={onSetStatus}
+          onSendSms={onSendSms}
         />
       )}
     </article>
