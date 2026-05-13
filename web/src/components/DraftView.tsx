@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, Copy, RotateCcw, Send, Sparkles, Users, X } from 'lucide-react';
+import { Check, Clock, Copy, RotateCcw, Send, Sparkles, Users, X } from 'lucide-react';
 
 import type { DraftPiece } from '@/lib/ai/draft';
 import type { DraftRow } from '@/lib/drafts';
 import type { SmsSendRow } from '@/lib/sms-sends';
 import { SegmentBlastPanel } from './SegmentBlastPanel';
+import { SchedulePanel } from './SchedulePanel';
 
 const STATUS_STYLES: Record<string, { label: string; pill: string }> = {
   PENDING_REVIEW: { label: 'Draft', pill: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300' },
@@ -328,6 +329,7 @@ function PieceCard({
   const [copied, setCopied] = useState(false);
   const [showSendForm, setShowSendForm] = useState(false);
   const [showBlastForm, setShowBlastForm] = useState(false);
+  const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [phone, setPhone] = useState('');
   const isBrief = BRIEF_ASSET_TYPES.includes(piece.assetType);
   const isSmsPiece = piece.assetType === 'sms';
@@ -367,7 +369,7 @@ function PieceCard({
               {copied ? 'Copied' : 'Copy'}
             </button>
           )}
-          {showSmsControls && !showSendForm && !showBlastForm && (
+          {showSmsControls && !showSendForm && !showBlastForm && !showScheduleForm && (
             <>
               <button
                 onClick={() => setShowSendForm(true)}
@@ -385,6 +387,14 @@ function PieceCard({
               >
                 <Users size={11} />
                 Send to segment
+              </button>
+              <button
+                onClick={() => setShowScheduleForm(true)}
+                className="inline-flex items-center gap-1 text-[10px] text-white bg-blue-600 hover:bg-blue-700 px-2 py-0.5"
+                title="Schedule a send for later"
+              >
+                <Clock size={11} />
+                Schedule
               </button>
             </>
           )}
@@ -455,6 +465,14 @@ function PieceCard({
           pieceIndex={pieceIndex}
           onClose={() => setShowBlastForm(false)}
           onSent={onSegmentBlastSent}
+        />
+      )}
+
+      {showSmsControls && showScheduleForm && (
+        <SchedulePanel
+          draftId={draftId}
+          pieceIndex={pieceIndex}
+          onClose={() => setShowScheduleForm(false)}
         />
       )}
     </div>

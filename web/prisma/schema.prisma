@@ -101,6 +101,7 @@ model CampaignDraft {
   refinedDrafts CampaignDraft[] @relation("DraftRefinement")
   smsSendEvents SmsSendEvent[]
   smsBlastEvents SmsBlastEvent[]
+  scheduledSends ScheduledSend[]
 
   @@index([analysisId, recIndex])
   @@index([parentDraftId])
@@ -135,6 +136,50 @@ model SmsSendEvent {
   draft CampaignDraft @relation(fields: [draftId], references: [id])
 
   @@index([draftId, createdAt])
+}
+
+/// A send that's been queued to fire at a future time. The instrumentation
+/// hook polls every ~30s, picks up rows where scheduledAt <= now and
+/// status = PENDING, and executes them via the same libs used by the
+/// on-demand send routes.
+///
+/// `kind`:
+///   - 'single' — send to one phone (config = { phone })
+///   - 'blast'  — send to a segment   (config = { segment, campaignTag? })
+///
+/// `config` is a JSON blob so the schema doesn't fork per kind.
+///
+/// A scheduled send only fires while its source draft is APPROVED. If the
+/// draft gets re-opened (back to PENDING_REVIEW) or rejected, the
+/// scheduler skips it and marks SKIPPED with a reason.
+model ScheduledSend {
+  id            String   @id @default(cuid())
+  draftId       String
+  pieceIndex    Int
+  kind          String   // 'single' | 'blast'
+  /// JSON: { phone } for single, { segment, campaignTag? } for blast.
+  config        String
+  scheduledAt   DateTime
+  /// PENDING (waiting to fire), RUNNING (worker is currently sending),
+  /// COMPLETED (fired successfully), FAILED (worker hit an error and
+  /// gave up), SKIPPED (draft no longer APPROVED at fire time),
+  /// CANCELED (user canceled before fire).
+  status        String   @default("PENDING")
+  attemptCount  Int      @default(0)
+  lastAttemptAt DateTime?
+  lastError     String?
+  completedAt   DateTime?
+  /// JSON snapshot of the executed send/blast result (SmsSendEvent or
+  /// SmsBlastEvent payload depending on kind), so the dashboard can
+  /// render the outcome without an extra join.
+  resultJson    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  draft CampaignDraft @relation(fields: [draftId], references: [id])
+
+  @@index([status, scheduledAt])
+  @@index([draftId, pieceIndex])
 }
 
 /// One row per segment blast attempt. Holds the segment filter snapshot,
