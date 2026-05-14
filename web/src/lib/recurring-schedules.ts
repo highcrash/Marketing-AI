@@ -7,7 +7,7 @@ export interface RecurringScheduleRow {
   id: string;
   draftId: string;
   pieceIndex: number;
-  kind: 'single' | 'blast';
+  kind: 'single' | 'blast' | 'fb-post';
   config: ScheduledConfig;
   frequency: 'weekly';
   dayOfWeek: number;
@@ -50,7 +50,7 @@ function rowToRecurring(row: {
     id: row.id,
     draftId: row.draftId,
     pieceIndex: row.pieceIndex,
-    kind: row.kind as 'single' | 'blast',
+    kind: row.kind as 'single' | 'blast' | 'fb-post',
     config: JSON.parse(row.config) as ScheduledConfig,
     frequency: row.frequency as 'weekly',
     dayOfWeek: row.dayOfWeek,
@@ -83,7 +83,7 @@ export function bumpFireAt(prev: Date, frequency: 'weekly'): Date {
 export async function createRecurringSchedule(params: {
   draftId: string;
   pieceIndex: number;
-  kind: 'single' | 'blast';
+  kind: 'single' | 'blast' | 'fb-post';
   config: ScheduledConfig;
   frequency: 'weekly';
   dayOfWeek: number;

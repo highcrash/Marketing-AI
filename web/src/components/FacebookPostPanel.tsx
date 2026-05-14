@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Clock, ExternalLink, Send, X } from 'lucide-react';
+import { Clock, ExternalLink, Repeat, Send, X } from 'lucide-react';
 import Link from 'next/link';
 
 import type { FacebookConnectionRow, FacebookPostEventRow } from '@/lib/facebook';
@@ -49,11 +49,19 @@ export function FacebookPostPanel({
   const [postError, setPostError] = useState<string | null>(null);
   /// Post mode: 'now' publishes immediately via /api/facebook/post,
   /// 'later' creates a ScheduledSend row that the scheduler tick picks
-  /// up via /api/drafts/:id/schedule.
-  const [mode, setMode] = useState<'now' | 'later'>('now');
+  /// up via /api/drafts/:id/schedule, 'recurring' creates a
+  /// RecurringSchedule that fires every chosen day-of-week.
+  const [mode, setMode] = useState<'now' | 'later' | 'recurring'>('now');
   const [scheduleAt, setScheduleAt] = useState(defaultScheduleAt);
   const [scheduling, setScheduling] = useState(false);
   const [scheduleResult, setScheduleResult] = useState<{ id: string; scheduledAt: string } | null>(null);
+  // Recurring weekly: pick day-of-week (0=Sun..6=Sat) + local HH:mm
+  const [dow, setDow] = useState<number>(new Date().getDay());
+  const [hhmm, setHhmm] = useState<string>(() => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, '0')}:${String(Math.floor(d.getMinutes() / 5) * 5).padStart(2, '0')}`;
+  });
+  const [recurringResult, setRecurringResult] = useState<{ id: string; nextFireAt: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -152,6 +160,74 @@ export function FacebookPostPanel({
       }
       if (json.scheduled) {
         setScheduleResult(json.scheduled);
+        onPosted();
+      }
+    } catch (err: unknown) {
+      setPostError(err instanceof Error ? err.message : 'unknown error');
+    } finally {
+      setScheduling(false);
+    }
+  }
+
+  /// Compute the first fire from the day-of-week + time picker, in the
+  /// browser's local timezone. If the target slot is already in the
+  /// past for "today", bump to next week. The server stores both the
+  /// timezone IANA name and the resolved UTC instant.
+  function computeFirstFire(): Date {
+    const [h, m] = hhmm.split(':').map((s) => Number(s));
+    const now = new Date();
+    const target = new Date(now);
+    const currentDow = now.getDay();
+    let deltaDays = dow - currentDow;
+    if (deltaDays < 0) deltaDays += 7;
+    target.setDate(now.getDate() + deltaDays);
+    target.setHours(h, m, 0, 0);
+    if (target.getTime() <= now.getTime()) {
+      target.setDate(target.getDate() + 7);
+    }
+    return target;
+  }
+
+  async function scheduleRecurring() {
+    if (!selectedId) return;
+    const trimmed = body.trim();
+    if (trimmed.length === 0) return;
+    const [h, m] = hhmm.split(':').map((s) => Number(s));
+    if (!Number.isInteger(h) || !Number.isInteger(m)) {
+      setPostError('Pick a valid time');
+      return;
+    }
+    setScheduling(true);
+    setPostError(null);
+    setRecurringResult(null);
+    try {
+      const firstFireAt = computeFirstFire();
+      const timezone =
+        Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const res = await fetch(`/api/drafts/${encodeURIComponent(draftId)}/recurring`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pieceIndex,
+          kind: 'fb-post',
+          dayOfWeek: dow,
+          hour: h,
+          minute: m,
+          timezone,
+          firstFireAt: firstFireAt.toISOString(),
+          config: { connectionId: selectedId, body: trimmed },
+        }),
+      });
+      const json = (await res.json()) as {
+        recurring?: { id: string; nextFireAt: string };
+        error?: string;
+        message?: string;
+      };
+      if (!res.ok || json.error) {
+        throw new Error(json.message ?? `HTTP ${res.status}`);
+      }
+      if (json.recurring) {
+        setRecurringResult(json.recurring);
         onPosted();
       }
     } catch (err: unknown) {
@@ -265,6 +341,18 @@ export function FacebookPostPanel({
               <Clock size={10} />
               Schedule for later
             </button>
+            <button
+              type="button"
+              onClick={() => setMode('recurring')}
+              className={`px-2 py-1 border inline-flex items-center gap-1 ${
+                mode === 'recurring'
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800'
+              }`}
+            >
+              <Repeat size={10} />
+              Recurring weekly
+            </button>
           </div>
           {mode === 'later' && (
             <label className="block">
@@ -280,11 +368,52 @@ export function FacebookPostPanel({
               />
             </label>
           )}
+          {mode === 'recurring' && (
+            <div className="flex flex-wrap gap-3 items-end">
+              <label className="block">
+                <span className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">
+                  Every
+                </span>
+                <select
+                  value={dow}
+                  onChange={(e) => setDow(Number(e.target.value))}
+                  disabled={scheduling}
+                  className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2"
+                >
+                  <option value={0}>Sunday</option>
+                  <option value={1}>Monday</option>
+                  <option value={2}>Tuesday</option>
+                  <option value={3}>Wednesday</option>
+                  <option value={4}>Thursday</option>
+                  <option value={5}>Friday</option>
+                  <option value={6}>Saturday</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">
+                  At
+                </span>
+                <input
+                  type="time"
+                  value={hhmm}
+                  step={300}
+                  onChange={(e) => setHhmm(e.target.value)}
+                  disabled={scheduling}
+                  className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2"
+                />
+              </label>
+              <span className="text-[10px] text-zinc-500 self-center pb-1">
+                {Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'} time
+              </span>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-zinc-500">
               {mode === 'now'
                 ? 'Publishes immediately to the selected page'
-                : 'Queued — the scheduler fires it at the chosen time (only while the draft is APPROVED)'}
+                : mode === 'later'
+                ? 'Queued — the scheduler fires it at the chosen time (only while the draft is APPROVED)'
+                : 'Fires every chosen weekday until you pause or delete it on /schedules'}
             </span>
             {mode === 'now' ? (
               <button
@@ -295,7 +424,7 @@ export function FacebookPostPanel({
                 <Send size={11} />
                 {posting ? 'Posting…' : 'Post to Facebook'}
               </button>
-            ) : (
+            ) : mode === 'later' ? (
               <button
                 onClick={schedule}
                 disabled={scheduling || !selectedId || body.trim().length === 0}
@@ -303,6 +432,15 @@ export function FacebookPostPanel({
               >
                 <Clock size={11} />
                 {scheduling ? 'Scheduling…' : 'Schedule post'}
+              </button>
+            ) : (
+              <button
+                onClick={scheduleRecurring}
+                disabled={scheduling || !selectedId || body.trim().length === 0}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
+              >
+                <Repeat size={11} />
+                {scheduling ? 'Saving…' : 'Save recurring'}
               </button>
             )}
           </div>
@@ -318,6 +456,15 @@ export function FacebookPostPanel({
           <span className="font-medium">⧖ Scheduled</span>
           <span className="ml-2">
             fires {new Date(scheduleResult.scheduledAt).toLocaleString()} · id {scheduleResult.id}
+          </span>
+        </div>
+      )}
+
+      {recurringResult && (
+        <div className="px-3 py-2 text-[11px] font-mono border text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900">
+          <span className="font-medium">↻ Recurring set</span>
+          <span className="ml-2">
+            first fire {new Date(recurringResult.nextFireAt).toLocaleString()} · id {recurringResult.id}
           </span>
         </div>
       )}
