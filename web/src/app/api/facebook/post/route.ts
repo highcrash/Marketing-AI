@@ -9,9 +9,13 @@ export const dynamic = 'force-dynamic';
 interface PostBody {
   connectionId?: unknown;
   message?: unknown;
+  imageUrl?: unknown;
+  videoUrl?: unknown;
   draftId?: unknown;
   pieceIndex?: unknown;
 }
+
+const URL_RE = /^https?:\/\/[^\s]+$/i;
 
 export async function POST(req: Request) {
   try {
@@ -19,6 +23,24 @@ export async function POST(req: Request) {
     const connectionId =
       typeof body.connectionId === 'string' ? body.connectionId.trim() : '';
     const message = typeof body.message === 'string' ? body.message.trim() : '';
+    const rawImage = typeof body.imageUrl === 'string' ? body.imageUrl.trim() : '';
+    const imageUrl =
+      rawImage.length > 0 && URL_RE.test(rawImage) ? rawImage : null;
+    if (rawImage.length > 0 && imageUrl == null) {
+      return NextResponse.json(
+        { error: 'bad_request', message: 'imageUrl must be a valid http(s) URL' },
+        { status: 400 },
+      );
+    }
+    const rawVideo = typeof body.videoUrl === 'string' ? body.videoUrl.trim() : '';
+    const videoUrl =
+      rawVideo.length > 0 && URL_RE.test(rawVideo) ? rawVideo : null;
+    if (rawVideo.length > 0 && videoUrl == null) {
+      return NextResponse.json(
+        { error: 'bad_request', message: 'videoUrl must be a valid http(s) URL' },
+        { status: 400 },
+      );
+    }
     const draftId =
       typeof body.draftId === 'string' && body.draftId.trim().length > 0
         ? body.draftId.trim()
@@ -52,6 +74,8 @@ export async function POST(req: Request) {
       businessId: business.id,
       connectionId,
       message,
+      imageUrl,
+      videoUrl,
       draftId,
       pieceIndex,
     });
@@ -59,12 +83,13 @@ export async function POST(req: Request) {
     // Auto-mark the originating piece as done on a successful post, same
     // way SMS sends do. The user can still un-mark or edit the note.
     if (event.status === 'POSTED' && draftId !== null && pieceIndex !== null) {
+      const kindLabel = videoUrl ? '(reel)' : imageUrl ? '(photo)' : '';
       await markPieceComplete({
         draftId,
         pieceIndex,
         source: 'integrated-facebook-post',
         notes: event.providerPostId
-          ? `Posted to Facebook · post id ${event.providerPostId}`
+          ? `Posted to Facebook${kindLabel ? ' ' + kindLabel : ''} · post id ${event.providerPostId}`
           : null,
       });
     }

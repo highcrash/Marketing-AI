@@ -64,7 +64,11 @@ function parseConfig(kind: string, raw: unknown): ScheduledConfig | null {
         ? obj.connectionId.trim()
         : null;
     if (!connectionId) return null;
-    return { connectionId, body };
+    const rawImage = typeof obj.imageUrl === 'string' ? obj.imageUrl.trim() : '';
+    const imageUrl = /^https?:\/\/[^\s]+$/i.test(rawImage) ? rawImage : null;
+    const rawVideo = typeof obj.videoUrl === 'string' ? obj.videoUrl.trim() : '';
+    const videoUrl = /^https?:\/\/[^\s]+$/i.test(rawVideo) ? rawVideo : null;
+    return { connectionId, body, imageUrl, videoUrl };
   }
   return null;
 }

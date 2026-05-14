@@ -27,6 +27,12 @@ export interface ScheduledBlastConfig {
 export interface ScheduledFacebookPostConfig {
   connectionId: string;
   body?: string | null;
+  /// Optional public image URL — when set the fire publishes a photo
+  /// post with the body as the caption instead of a plain text post.
+  imageUrl?: string | null;
+  /// Optional public MP4 URL — when set the fire publishes a Reel.
+  /// Takes precedence over imageUrl if both are present.
+  videoUrl?: string | null;
 }
 
 export type ScheduledConfig =

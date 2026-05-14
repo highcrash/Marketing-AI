@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# user-uploaded creative assets served at /uploads/<sha>.{ext}
+/public/uploads/
+

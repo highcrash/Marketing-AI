@@ -141,14 +141,27 @@ export async function inspectToken(token: string): Promise<{
   };
 }
 
+export type PageMediaKind = 'text' | 'photo' | 'reel';
+
 export async function postToPage(params: {
   pageId: string;
   pageAccessToken: string;
   message: string;
+  /// When set, FB fetches the image from this URL and attaches it as
+  /// a photo post (POST /<page-id>/photos). Otherwise we do a plain
+  /// text post via /feed.
+  imageUrl?: string | null;
 }): Promise<{ id: string }> {
-  const url = `${GRAPH_BASE}/${encodeURIComponent(params.pageId)}/feed`;
+  const isPhoto = !!params.imageUrl && params.imageUrl.trim().length > 0;
+  const url = `${GRAPH_BASE}/${encodeURIComponent(params.pageId)}/${isPhoto ? 'photos' : 'feed'}`;
   const form = new URLSearchParams();
-  form.set('message', params.message);
+  if (isPhoto) {
+    form.set('url', params.imageUrl!.trim());
+    // 'message' acts as the caption on a photo post.
+    form.set('caption', params.message);
+  } else {
+    form.set('message', params.message);
+  }
   form.set('access_token', params.pageAccessToken);
   const res = await fetch(url, {
     method: 'POST',
@@ -160,9 +173,83 @@ export async function postToPage(params: {
     const msg = isErrorEnvelope(body) ? body.error.message : `HTTP ${res.status}`;
     throw new Error(msg);
   }
-  const ok = body as { id?: string };
-  if (!ok.id) throw new Error('Graph response had no post id');
-  return { id: ok.id };
+  // /photos returns { id, post_id } — prefer post_id (the feed-level
+  // id) so the audit row points to the public post, not the photo node.
+  const ok = body as { id?: string; post_id?: string };
+  const id = ok.post_id ?? ok.id;
+  if (!id) throw new Error('Graph response had no post id');
+  return { id };
+}
+
+/// Publish a Reel by URL. Facebook's Reels API is a 3-step container
+/// flow: create a video container with upload_phase=start, fetch the
+/// video at the URL with upload_phase=hosted, then finalise with
+/// upload_phase=finish. We use the hosted-URL variant because we
+/// already saved the user's upload to /public/uploads/, so the file
+/// is reachable from the public internet.
+///
+/// Polling for the container to leave PUBLISHED status is omitted —
+/// FB returns the post id immediately on the finalise call. The post
+/// goes through their server-side encode + safety checks
+/// asynchronously and shows up on the page once ready (usually 1-2
+/// minutes).
+export async function postReelToPage(params: {
+  pageId: string;
+  pageAccessToken: string;
+  videoUrl: string;
+  description: string;
+}): Promise<{ id: string }> {
+  const base = `${GRAPH_BASE}/${encodeURIComponent(params.pageId)}/video_reels`;
+
+  // Step 1 — create the upload container.
+  const startForm = new URLSearchParams();
+  startForm.set('upload_phase', 'start');
+  startForm.set('access_token', params.pageAccessToken);
+  const startRes = await fetch(base, {
+    method: 'POST',
+    body: startForm,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  });
+  const startBody = (await startRes.json()) as { video_id?: string; error?: GraphError };
+  if (!startRes.ok || startBody.error || !startBody.video_id) {
+    throw new Error(startBody.error?.message ?? `Reels start failed: HTTP ${startRes.status}`);
+  }
+  const videoId = startBody.video_id;
+
+  // Step 2 — hand FB the URL to fetch the bytes from.
+  const uploadUrl = `https://rupload.facebook.com/video-upload/v22.0/${encodeURIComponent(videoId)}`;
+  const uploadRes = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `OAuth ${params.pageAccessToken}`,
+      file_url: params.videoUrl,
+    },
+  });
+  const uploadBody = (await uploadRes.json()) as { success?: boolean; error?: GraphError };
+  if (!uploadRes.ok || uploadBody.error || uploadBody.success !== true) {
+    throw new Error(uploadBody.error?.message ?? `Reels upload failed: HTTP ${uploadRes.status}`);
+  }
+
+  // Step 3 — finalise with the description.
+  const finishForm = new URLSearchParams();
+  finishForm.set('video_id', videoId);
+  finishForm.set('upload_phase', 'finish');
+  finishForm.set('video_state', 'PUBLISHED');
+  finishForm.set('description', params.description);
+  finishForm.set('access_token', params.pageAccessToken);
+  const finishRes = await fetch(base, {
+    method: 'POST',
+    body: finishForm,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  });
+  const finishBody = (await finishRes.json()) as { success?: boolean; post_id?: string; error?: GraphError };
+  if (!finishRes.ok || finishBody.error || finishBody.success !== true) {
+    throw new Error(finishBody.error?.message ?? `Reels finish failed: HTTP ${finishRes.status}`);
+  }
+  // FB returns video_id reliably here; post_id only when the finish
+  // call publishes synchronously. Fall back to video_id so the user
+  // still has something traceable.
+  return { id: finishBody.post_id ?? videoId };
 }
 
 export interface FacebookConnectionRow {
@@ -303,12 +390,20 @@ function rowToPostEvent(row: {
   };
 }
 
-/// Publish a text post through a saved connection. Persists the attempt
-/// before the upstream call so even network failures get audited.
+/// Publish a text-or-photo-or-reel post through a saved connection.
+/// Persists the attempt before the upstream call so even network
+/// failures get audited.
 export async function publishPost(params: {
   businessId: string;
   connectionId: string;
   message: string;
+  /// Optional public URL of an image. When set, the post is published
+  /// as a photo (with the message as the caption). Must be reachable
+  /// from Facebook's servers — `localhost` URLs won't work.
+  imageUrl?: string | null;
+  /// Optional public URL of an MP4. When set, the post is published
+  /// as a Reel; this takes precedence over imageUrl if both are set.
+  videoUrl?: string | null;
   draftId?: string | null;
   pieceIndex?: number | null;
 }): Promise<FacebookPostEventRow> {
@@ -330,11 +425,24 @@ export async function publishPost(params: {
     },
   });
   try {
-    const { id } = await postToPage({
-      pageId: conn.row.pageId,
-      pageAccessToken: conn.accessToken,
-      message: params.message,
-    });
+    let id: string;
+    if (params.videoUrl && params.videoUrl.trim().length > 0) {
+      const result = await postReelToPage({
+        pageId: conn.row.pageId,
+        pageAccessToken: conn.accessToken,
+        videoUrl: params.videoUrl.trim(),
+        description: params.message,
+      });
+      id = result.id;
+    } else {
+      const result = await postToPage({
+        pageId: conn.row.pageId,
+        pageAccessToken: conn.accessToken,
+        message: params.message,
+        imageUrl: params.imageUrl,
+      });
+      id = result.id;
+    }
     const updated = await prisma.facebookPostEvent.update({
       where: { id: pending.id },
       data: { status: 'POSTED', providerPostId: id },

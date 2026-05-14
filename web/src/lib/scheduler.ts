@@ -129,6 +129,8 @@ export async function runSchedulerTick(): Promise<{ fired: number; failed: numbe
             businessId: business.id,
             connectionId: cfg.connectionId,
             message: cfg.body ?? piece ?? '',
+            imageUrl: cfg.imageUrl ?? null,
+            videoUrl: cfg.videoUrl ?? null,
             draftId: r.draftId,
             pieceIndex: r.pieceIndex,
           });
@@ -198,6 +200,8 @@ export async function runSchedulerTick(): Promise<{ fired: number; failed: numbe
             businessId: business.id,
             connectionId: cfg.connectionId,
             message: cfg.body ?? piece ?? '',
+            imageUrl: cfg.imageUrl ?? null,
+            videoUrl: cfg.videoUrl ?? null,
             draftId: row.draftId,
             pieceIndex: row.pieceIndex,
           });

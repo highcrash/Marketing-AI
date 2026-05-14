@@ -1,11 +1,26 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Clock, ExternalLink, Repeat, Send, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Clock, ExternalLink, Image as ImageIcon, Repeat, Send, Type, Upload, Video, X } from 'lucide-react';
 import Link from 'next/link';
 
 import type { FacebookConnectionRow, FacebookPostEventRow } from '@/lib/facebook';
 import { FacebookIcon } from './icons/FacebookIcon';
+
+type MediaKind = 'text' | 'photo' | 'reel';
+
+interface UploadResponse {
+  upload?: {
+    sha: string;
+    ext: string;
+    size: number;
+    publicPath: string;
+    absoluteUrl: string | null;
+    kind: 'image' | 'video';
+  };
+  error?: string;
+  message?: string;
+}
 
 /// Returns "YYYY-MM-DDThh:mm" exactly 1h from now, in local time, in the
 /// shape the <input type="datetime-local"> control expects. Used as the
@@ -62,6 +77,64 @@ export function FacebookPostPanel({
     return `${String(d.getHours()).padStart(2, '0')}:${String(Math.floor(d.getMinutes() / 5) * 5).padStart(2, '0')}`;
   });
   const [recurringResult, setRecurringResult] = useState<{ id: string; nextFireAt: string } | null>(null);
+  /// Which media variant the user is publishing. Drives whether the
+  /// post API gets imageUrl, videoUrl, or neither.
+  const [mediaKind, setMediaKind] = useState<MediaKind>('text');
+  /// Resolved public URL for the selected media — either pasted by
+  /// the user or returned by /api/uploads after a file upload. The
+  /// publicPath is what we display; absoluteUrl is what Graph fetches.
+  const [mediaUrl, setMediaUrl] = useState<string>('');
+  const [mediaAbsoluteUrl, setMediaAbsoluteUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const fd = new FormData();
+      fd.set('file', file);
+      const res = await fetch('/api/uploads', { method: 'POST', body: fd });
+      const json = (await res.json()) as UploadResponse;
+      if (!res.ok || json.error || !json.upload) {
+        throw new Error(json.message ?? `HTTP ${res.status}`);
+      }
+      // If PUBLIC_BASE_URL isn't set the file is still saved locally
+      // but Graph can't fetch it — warn the user instead of silently
+      // shipping a localhost URL.
+      if (!json.upload.absoluteUrl) {
+        setUploadError(
+          'File uploaded but PUBLIC_BASE_URL env is not set, so Facebook can\'t fetch it. Set PUBLIC_BASE_URL or paste a public URL instead.',
+        );
+      }
+      setMediaUrl(json.upload.publicPath);
+      setMediaAbsoluteUrl(json.upload.absoluteUrl);
+      // Auto-pick the kind from the upload type.
+      if (json.upload.kind === 'video') setMediaKind('reel');
+      else if (mediaKind === 'text') setMediaKind('photo');
+    } catch (err: unknown) {
+      setUploadError(err instanceof Error ? err.message : 'unknown error');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  /// Pick the URL to send to FB. If the user uploaded a file we have
+  /// both a relative publicPath and (hopefully) an absolute URL — Graph
+  /// needs absolute, so prefer that. If the user pasted a URL directly
+  /// we just send it verbatim.
+  function mediaUrlForFB(): string | null {
+    const trimmed = mediaUrl.trim();
+    if (trimmed.length === 0) return null;
+    if (mediaAbsoluteUrl) return mediaAbsoluteUrl;
+    // If the user pasted a URL we expect it to be absolute already.
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return null;
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -93,6 +166,15 @@ export function FacebookPostPanel({
     if (!selectedId) return;
     const trimmed = body.trim();
     if (trimmed.length === 0) return;
+    const url = mediaKind === 'text' ? null : mediaUrlForFB();
+    if (mediaKind !== 'text' && !url) {
+      setPostError(
+        mediaUrl.trim().length === 0
+          ? `Add ${mediaKind === 'reel' ? 'a video' : 'an image'} URL or upload a file first`
+          : 'Uploaded file is not publicly reachable — set PUBLIC_BASE_URL or paste a remote URL',
+      );
+      return;
+    }
     setPosting(true);
     setPostError(null);
     setResult(null);
@@ -103,6 +185,8 @@ export function FacebookPostPanel({
         body: JSON.stringify({
           connectionId: selectedId,
           message: trimmed,
+          imageUrl: mediaKind === 'photo' ? url : null,
+          videoUrl: mediaKind === 'reel' ? url : null,
           draftId,
           pieceIndex,
         }),
@@ -137,6 +221,15 @@ export function FacebookPostPanel({
     setPostError(null);
     setScheduleResult(null);
     try {
+      const url = mediaKind === 'text' ? null : mediaUrlForFB();
+      if (mediaKind !== 'text' && !url) {
+        setPostError(
+          mediaUrl.trim().length === 0
+            ? `Add ${mediaKind === 'reel' ? 'a video' : 'an image'} URL or upload a file first`
+            : 'Uploaded file is not publicly reachable — set PUBLIC_BASE_URL or paste a remote URL',
+        );
+        return;
+      }
       const res = await fetch(`/api/drafts/${encodeURIComponent(draftId)}/schedule`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -147,6 +240,8 @@ export function FacebookPostPanel({
           config: {
             connectionId: selectedId,
             body: trimmed,
+            imageUrl: mediaKind === 'photo' ? url : null,
+            videoUrl: mediaKind === 'reel' ? url : null,
           },
         }),
       });
@@ -204,6 +299,15 @@ export function FacebookPostPanel({
       const firstFireAt = computeFirstFire();
       const timezone =
         Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const url = mediaKind === 'text' ? null : mediaUrlForFB();
+      if (mediaKind !== 'text' && !url) {
+        setPostError(
+          mediaUrl.trim().length === 0
+            ? `Add ${mediaKind === 'reel' ? 'a video' : 'an image'} URL or upload a file first`
+            : 'Uploaded file is not publicly reachable — set PUBLIC_BASE_URL or paste a remote URL',
+        );
+        return;
+      }
       const res = await fetch(`/api/drafts/${encodeURIComponent(draftId)}/recurring`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -215,7 +319,12 @@ export function FacebookPostPanel({
           minute: m,
           timezone,
           firstFireAt: firstFireAt.toISOString(),
-          config: { connectionId: selectedId, body: trimmed },
+          config: {
+            connectionId: selectedId,
+            body: trimmed,
+            imageUrl: mediaKind === 'photo' ? url : null,
+            videoUrl: mediaKind === 'reel' ? url : null,
+          },
         }),
       });
       const json = (await res.json()) as {
@@ -317,6 +426,83 @@ export function FacebookPostPanel({
               )}
             </div>
           </label>
+
+          {/* Media kind toggle — text-only / photo / reel */}
+          <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest">
+            {(['text', 'photo', 'reel'] as const).map((k) => {
+              const Icon = k === 'text' ? Type : k === 'photo' ? ImageIcon : Video;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setMediaKind(k)}
+                  className={`px-2 py-1 border inline-flex items-center gap-1 ${
+                    mediaKind === k
+                      ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-zinc-900 dark:border-zinc-100'
+                      : 'text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800'
+                  }`}
+                >
+                  <Icon size={10} />
+                  {k === 'text' ? 'Text only' : k === 'photo' ? 'Photo' : 'Reel'}
+                </button>
+              );
+            })}
+          </div>
+          {mediaKind !== 'text' && (
+            <div className="space-y-1.5 border border-zinc-200 dark:border-zinc-800 px-3 py-2 bg-white dark:bg-zinc-950">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <label className="block flex-1 min-w-[180px]">
+                  <span className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">
+                    {mediaKind === 'photo' ? 'Image URL' : 'Video URL (.mp4)'} or upload
+                  </span>
+                  <input
+                    value={mediaUrl}
+                    onChange={(e) => {
+                      setMediaUrl(e.target.value);
+                      setMediaAbsoluteUrl(null);
+                    }}
+                    disabled={posting || uploading}
+                    placeholder={
+                      mediaKind === 'photo'
+                        ? 'https://… (public image URL)'
+                        : 'https://… (public MP4 URL)'
+                    }
+                    className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-800 dark:text-zinc-200 px-3 py-1.5 focus:outline-none focus:border-blue-600 font-mono break-all"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={posting || uploading}
+                  className="inline-flex items-center gap-1 text-[10px] tracking-widest uppercase text-zinc-700 dark:text-zinc-300 hover:text-blue-600 disabled:opacity-50 px-2 py-1.5 border border-zinc-300 dark:border-zinc-700"
+                >
+                  <Upload size={11} />
+                  {uploading ? 'Uploading…' : 'Upload file'}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={mediaKind === 'photo' ? 'image/jpeg,image/png,image/gif,image/webp' : 'video/mp4,video/quicktime'}
+                  onChange={handleFileSelected}
+                  className="hidden"
+                />
+              </div>
+              {mediaAbsoluteUrl && (
+                <p className="text-[10px] text-zinc-500 break-all">
+                  Will be fetched by Facebook from <span className="font-mono">{mediaAbsoluteUrl}</span>
+                </p>
+              )}
+              {uploadError && (
+                <p className="text-[11px] text-amber-700 dark:text-amber-400 break-words">{uploadError}</p>
+              )}
+              {mediaKind === 'reel' && (
+                <p className="text-[10px] text-zinc-500">
+                  Reels must be vertical 9:16 MP4, 3-90s. Facebook re-encodes on its side; the post appears 1-2 min after fire.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest">
             <button
               type="button"
