@@ -23,6 +23,14 @@ if ! dpkg -s python3-certbot-apache >/dev/null 2>&1; then
   DEBIAN_FRONTEND=noninteractive apt-get install -y python3-certbot-apache
 fi
 
+echo "=== installing global prisma cli if missing ==="
+# Needed so `prisma migrate deploy` works during deploys without
+# shipping the prisma CLI (50+ MB) in every release tarball. Pinned
+# to the same version the app uses to avoid migration-engine drift.
+if ! command -v prisma >/dev/null 2>&1 || [ "$(prisma --version 2>/dev/null | awk '/^prisma /{print $3}')" != "6.19.3" ]; then
+  npm install -g prisma@6.19.3
+fi
+
 echo "=== enabling apache modules ==="
 a2enmod proxy proxy_http headers rewrite ssl >/dev/null
 

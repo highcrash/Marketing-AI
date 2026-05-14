@@ -124,7 +124,9 @@ if [ -d /tmp/mai-keep-uploads ]; then
   mv /tmp/mai-keep-uploads "$APP_DIR/public/uploads"
 fi
 echo '-- running prisma migrate deploy --'
-cd "$APP_DIR" && /usr/bin/node node_modules/prisma/build/index.js migrate deploy || echo 'migrate deploy failed (likely fresh DB - will be created on first run)'
+# prisma cli installed globally at /usr/local/bin/prisma (npm i -g
+# prisma@6.19.3 one-off). Reads DATABASE_URL from /opt/marketing-ai/.env.
+cd "$APP_DIR" && prisma migrate deploy || echo 'migrate deploy failed (non-fatal - service will still start; check logs)'
 echo '-- starting service --'
 systemctl start marketing-ai.service
 sleep 3
