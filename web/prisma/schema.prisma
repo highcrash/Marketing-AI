@@ -123,6 +123,61 @@ model FacebookPostEvent {
   @@index([connectionId, createdAt])
 }
 
+/// A short tracking code attached to a campaign piece — typed at POS
+/// or counted manually by the owner to attribute revenue back to the
+/// campaign. Self-contained on the Marketing AI side so no Restora
+/// changes are needed; when Restora later exposes redemption events
+/// via /external we plug those into the redemption ledger
+/// automatically.
+///
+/// Codes are short + memorable (e.g. EATRO-M5-001) so customers can
+/// say them at the counter.
+model CampaignCode {
+  id          String   @id @default(cuid())
+  /// Globally unique short code. Case-insensitive on lookup but
+  /// stored uppercase.
+  code        String   @unique
+  /// The draft + piece this code was minted for. recIndex is denormalised
+  /// onto the draft, not duplicated here.
+  draftId     String
+  pieceIndex  Int
+  /// Free-text label the dashboard shows (e.g. "Inactive customer SMS").
+  /// Falls back to the piece title when null.
+  label       String?
+  /// Optional expiry; null = never expires. Soft-check only — server
+  /// doesn't auto-reject redemptions past expiry, it just flags them.
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  draft       CampaignDraft         @relation(fields: [draftId], references: [id])
+  redemptions CampaignRedemption[]
+
+  @@index([draftId, pieceIndex])
+}
+
+/// One redemption event against a CampaignCode. Could be entered
+/// manually by the owner ("3 customers used the code today, ৳1,400")
+/// or pushed by a future Restora /external webhook.
+model CampaignRedemption {
+  id          String   @id @default(cuid())
+  codeId      String
+  /// Revenue attributed to this redemption in minor units (paisa).
+  amountMinor Int      @default(0)
+  /// Number of distinct customers / orders that used the code in this
+  /// redemption batch.
+  qty         Int      @default(1)
+  /// Where the redemption signal came from: 'manual' (owner typed it
+  /// in), 'restora-webhook' (future), 'pos-export' (future bulk import).
+  source      String   @default("manual")
+  notes       String?
+  redeemedAt  DateTime @default(now())
+
+  code CampaignCode @relation(fields: [codeId], references: [id], onDelete: Cascade)
+
+  @@index([codeId, redeemedAt])
+}
+
 /// A time-bucketed campaign plan derived from one Analysis. Holds the
 /// owner-set budget + horizon + disabled-category choices, plus the
 /// AI-generated calendar of tasks as a JSON payload. Multiple plans
@@ -226,6 +281,7 @@ model CampaignDraft {
   scheduledSends ScheduledSend[]
   recurringSchedules RecurringSchedule[]
   pieceCompletions   PieceCompletion[]
+  campaignCodes      CampaignCode[]
 
   @@index([analysisId, recIndex])
   @@index([parentDraftId])
