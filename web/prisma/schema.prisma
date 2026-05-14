@@ -20,18 +20,67 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// Single-user account (Auth.js credentials provider). Phase 1.E ships
-/// a lockdown gate: only the FIRST register call succeeds; subsequent
-/// registrations get a 403. Multi-user support would change the
-/// Business ↔ User relationship; for now there's exactly one User and
-/// they own everything.
+/// User account (Auth.js credentials provider).
+///
+/// Phase 1.E shipped single-user lockdown; multi-tenant V2 lifts that
+/// gate by introducing Organization + OrgMembership. The first user
+/// to register still gets the original /register flow; additional
+/// users are added through org-level invitations (route TBD when UI
+/// guidelines land).
+///
+/// `activeBusinessId` is per-user UI state: when a user belongs to
+/// multiple orgs (and therefore multiple businesses), this is the one
+/// the dashboard renders by default. Null means "use whichever business
+/// the env points at" — the pre-multi-tenant default.
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  name         String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id               String   @id @default(cuid())
+  email            String   @unique
+  passwordHash     String
+  name             String?
+  activeBusinessId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  memberships OrgMembership[]
+}
+
+/// Top-level tenant boundary. Everything billable + everything that
+/// could conceivably belong to a different paying customer lives
+/// under an Organization. A solo owner-operator has exactly one org
+/// and one Business under it; an agency managing many restaurants
+/// has one org per agency (with multiple businesses) OR one org per
+/// restaurant — depends on how they want to scope users + billing.
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  /// Slug for nice URLs once the dashboard surfaces an org switcher.
+  /// Auto-derived from name on create + uniqueness-suffixed when
+  /// collisions happen. Lowercase, kebab-case.
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships OrgMembership[]
+  businesses  Business[]
+}
+
+/// Many-to-many between users and orgs with a role attached. OWNER is
+/// the org creator and can never be removed (must transfer first);
+/// ADMIN can manage members + businesses; MEMBER can only see/use
+/// businesses, not change org-level settings.
+model OrgMembership {
+  id        String   @id @default(cuid())
+  orgId     String
+  userId    String
+  role      String   @default("MEMBER") // OWNER | ADMIN | MEMBER
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId])
+  @@index([userId])
 }
 
 /// A business that exposes the /v1/external/* contract. Phase 1.C
@@ -40,6 +89,10 @@ model User {
 /// multiple businesses can be connected.
 model Business {
   id        String   @id @default(cuid())
+  /// Owning organization. Nullable for backwards compat with the
+  /// pre-multi-tenant single-business deployments; new businesses
+  /// MUST be created under an org via the onboarding flow.
+  organizationId String?
   /// Cached display name from the most recent /business/profile call.
   name      String
   /// Base URL including the /v1/external segment, no trailing slash.
@@ -59,9 +112,13 @@ model Business {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  organization Organization? @relation(fields: [organizationId], references: [id])
+
   analyses Analysis[]
   facebookConnections FacebookConnection[]
   facebookPostEvents  FacebookPostEvent[]
+
+  @@index([organizationId])
 }
 
 /// One Facebook Page that this business has authorised the platform to
