@@ -4,6 +4,13 @@ import { Suspense, useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { Loader2, Sparkles } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 // Next 16 requires useSearchParams consumers to live inside a Suspense
 // boundary so the rest of the page can prerender statically. Splitting
@@ -50,59 +57,81 @@ function LoginForm() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-black px-6">
-      <form
-        onSubmit={submit}
-        className="w-full max-w-sm border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-6 space-y-4"
-      >
-        <div>
-          <p className="text-xs uppercase tracking-widest text-red-600 font-medium mb-1">
-            Marketing AI
-          </p>
-          <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">Sign in</h1>
+    <main className="min-h-screen flex items-center justify-center bg-background px-6 py-12">
+      <div className="w-full max-w-sm space-y-6">
+        <div className="text-center space-y-2">
+          <div className="inline-flex items-center gap-2 text-primary">
+            <Sparkles className="h-5 w-5" />
+            <span className="text-[10px] uppercase tracking-[0.3em] font-medium">
+              Marketing AI
+            </span>
+          </div>
+          <h1 className="text-3xl font-semibold tracking-tight">Sign in</h1>
         </div>
 
-        <label className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase tracking-widest text-zinc-500">Email</span>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoFocus
-            autoComplete="email"
-            className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 px-3 py-2 focus:outline-none focus:border-red-600"
-          />
-        </label>
+        <Card>
+          <CardHeader>
+            <CardTitle>Welcome back</CardTitle>
+            <CardDescription>
+              Enter your credentials to continue your audit & campaign workflow.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={submit} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoFocus
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                />
+              </div>
 
-        <label className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase tracking-widest text-zinc-500">Password</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            autoComplete="current-password"
-            className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 px-3 py-2 focus:outline-none focus:border-red-600"
-          />
-        </label>
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription className="font-mono break-all">{error}</AlertDescription>
+                </Alert>
+              )}
 
-        {error && (
-          <p className="text-xs text-red-600 dark:text-red-400 font-mono break-all">{error}</p>
-        )}
+              <Button type="submit" disabled={submitting || !email || !password} className="w-full">
+                {submitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Signing in
+                  </>
+                ) : (
+                  'Sign in'
+                )}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
 
-        <button
-          type="submit"
-          disabled={submitting || !email || !password}
-          className="w-full bg-red-600 hover:bg-red-700 disabled:bg-zinc-300 disabled:text-zinc-500 text-white px-4 py-2.5 text-sm font-medium tracking-wide uppercase"
-        >
-          {submitting ? 'Signing in…' : 'Sign in'}
-        </button>
-
-        <p className="text-[11px] text-zinc-500 pt-2 border-t border-zinc-100 dark:border-zinc-900">
-          First time? <Link href="/register" className="text-red-600 hover:text-red-700">Set up the account</Link>. After the first user is created, this page is the only way in.
+        <p className="text-[11px] text-muted-foreground text-center">
+          First time?{' '}
+          <Link href="/register" className="text-primary hover:text-accent underline-offset-4 hover:underline">
+            Set up the account
+          </Link>
+          . After the first user is created, this page is the only way in.
         </p>
-      </form>
+      </div>
     </main>
   );
 }

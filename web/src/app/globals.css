@@ -1,26 +1,178 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Marketing AI brand: 70% black, 20% white, 10% neon blue.
+ *
+ * 70% — surfaces. The whole app sits on near-pure black with three
+ *   elevated tiers (background → card → popover/dialog) so depth comes
+ *   from luminance, not from rounded corners or shadows.
+ *
+ * 20% — foreground. Primary text, secondary text, borders, dividers.
+ *   Pure white is reserved for the highest-attention typography
+ *   (headlines, button labels on accent surfaces); everything else
+ *   sits at zinc-100 / zinc-300 / zinc-500 depending on hierarchy.
+ *
+ * 10% — neon blue, used sparingly. Primary actions, focus rings, link
+ *   underlines, active nav state, KPI numbers worth noticing. The hue
+ *   stays the same across hover/active; only the lightness shifts.
+ *
+ * All values are OKLCH so alpha-modifiers in Tailwind 4 work naturally.
+ */
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* --- Light theme (kept as a courtesy, but the app defaults to dark) --- */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.6 0.22 240);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.7 0.2 235);
+  --accent-foreground: oklch(0.05 0 0);
+  --destructive: oklch(0.577 0.245 27);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(0.92 0 0);
+  --input: oklch(0.92 0 0);
+  --ring: oklch(0.7 0.2 235);
+  --chart-1: oklch(0.7 0.2 235);
+  --chart-2: oklch(0.6 0.18 200);
+  --chart-3: oklch(0.55 0.15 260);
+  --chart-4: oklch(0.65 0.2 180);
+  --chart-5: oklch(0.7 0.15 220);
+  --radius: 0;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.6 0.22 240);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.92 0 0);
+  --sidebar-ring: oklch(0.7 0.2 235);
+}
+
+.dark, :root {
+  /* Dark is the default — keep both selectors so the app renders the
+     dark palette whether or not the user / OS opts in. */
+
+  /* 70% — black surfaces with three luminance tiers. */
+  --background: oklch(0.04 0 0);          /* page bg, deepest black */
+  --card: oklch(0.08 0 0);                /* card / section bg */
+  --popover: oklch(0.11 0 0);             /* floating menu / dialog bg */
+  --muted: oklch(0.13 0 0);               /* subtle filled chip bg */
+  --secondary: oklch(0.16 0 0);           /* slightly-elevated panels */
+  --input: oklch(0.13 0 0);               /* form field bg */
+  --sidebar: oklch(0.06 0 0);
+
+  /* 20% — whites for text + dividers. */
+  --foreground: oklch(0.98 0 0);          /* primary text */
+  --card-foreground: oklch(0.98 0 0);
+  --popover-foreground: oklch(0.98 0 0);
+  --secondary-foreground: oklch(0.98 0 0);
+  --muted-foreground: oklch(0.7 0 0);     /* secondary text */
+  --sidebar-foreground: oklch(0.98 0 0);
+  --border: oklch(0.22 0 0);              /* dividers between sections */
+  --sidebar-border: oklch(0.22 0 0);
+
+  /* 10% — neon blue accents. */
+  --primary: oklch(0.76 0.18 235);        /* primary button bg */
+  --primary-foreground: oklch(0.04 0 0);  /* dark text on neon button */
+  --accent: oklch(0.85 0.2 230);          /* hover + key data colour */
+  --accent-foreground: oklch(0.04 0 0);
+  --ring: oklch(0.76 0.18 235);           /* focus outline */
+  --sidebar-primary: oklch(0.76 0.18 235);
+  --sidebar-primary-foreground: oklch(0.04 0 0);
+  --sidebar-accent: oklch(0.16 0 0);
+  --sidebar-accent-foreground: oklch(0.98 0 0);
+  --sidebar-ring: oklch(0.76 0.18 235);
+
+  /* Destructive stays red, but a richer red than the default. */
+  --destructive: oklch(0.62 0.24 25);
+  --destructive-foreground: oklch(0.98 0 0);
+
+  /* Chart palette — variations of the accent + complementary cyan/violet. */
+  --chart-1: oklch(0.76 0.18 235);
+  --chart-2: oklch(0.7 0.15 200);
+  --chart-3: oklch(0.65 0.2 270);
+  --chart-4: oklch(0.8 0.1 220);
+  --chart-5: oklch(0.55 0.18 260);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  * {
+    border-color: var(--border);
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans), system-ui, sans-serif;
+    /* Square corners everywhere — brand rule applies to Marketing AI too. */
+  }
+  /* Neon-blue selection so even highlighting a paragraph reinforces the brand. */
+  ::selection {
+    background: oklch(0.76 0.18 235 / 0.4);
+    color: oklch(0.98 0 0);
+  }
+  /* Custom scrollbar so the dark surfaces don't get punched by light grey. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: oklch(0.06 0 0);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: oklch(0.22 0 0);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: oklch(0.3 0 0);
+  }
 }
