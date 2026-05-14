@@ -123,6 +123,38 @@ model FacebookPostEvent {
   @@index([connectionId, createdAt])
 }
 
+/// A time-bucketed campaign plan derived from one Analysis. Holds the
+/// owner-set budget + horizon + disabled-category choices, plus the
+/// AI-generated calendar of tasks as a JSON payload. Multiple plans
+/// can exist per analysis (different budgets, what-if scenarios) —
+/// the dashboard surfaces the most recent by default.
+model CampaignPlan {
+  id                  String   @id @default(cuid())
+  analysisId          String
+  /// Total budget in minor units (paisa for BDT).
+  totalBudgetMinor    Int
+  /// Calendar horizon in days; typically 30 / 60 / 90.
+  horizonDays         Int
+  /// Local start date 'YYYY-MM-DD' (business timezone).
+  startDate           String
+  /// JSON-encoded string[] of DisabledCategory values.
+  disabledCategories  String   @default("[]")
+  model               String
+  inputTokens         Int
+  outputTokens        Int
+  cacheReadTokens     Int
+  cacheWriteTokens    Int
+  /// JSON-encoded CampaignPlan body (summary, redistributionNotes,
+  /// weeks, tasks) — read with JSON.parse at the edge so the shape
+  /// can evolve without migrations.
+  payload             String
+  createdAt           DateTime @default(now())
+
+  analysis Analysis @relation(fields: [analysisId], references: [id])
+
+  @@index([analysisId, createdAt])
+}
+
 /// One row per successful analysis run. The full AnalysisResult JSON
 /// lives in `payload` so we never need migrations when the result
 /// shape changes. Top-level columns are for indexed listing.
@@ -146,6 +178,7 @@ model Analysis {
 
   business Business        @relation(fields: [businessId], references: [id])
   drafts   CampaignDraft[]
+  plans    CampaignPlan[]
 
   @@index([businessId, createdAt])
 }
