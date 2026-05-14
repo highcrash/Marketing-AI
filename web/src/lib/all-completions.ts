@@ -19,6 +19,13 @@ export interface CompletionListItem {
   /// circle; 'integrated-sms-send' / 'integrated-sms-blast' mean the
   /// platform sent the SMS and auto-marked it.
   source: string;
+  /// Proof-of-work file attached at mark-done time. Null when none.
+  attachment: {
+    path: string;
+    name: string;
+    mime: string;
+    size: number;
+  } | null;
   completedAt: string;
 }
 
@@ -79,6 +86,15 @@ export async function listAllCompletions(businessId: string): Promise<Completion
       pieceChannel: pieceField(payload, r.pieceIndex, 'channel') || '',
       notes: r.notes,
       source: r.source,
+      attachment:
+        r.attachmentPath && r.attachmentName && r.attachmentMime && r.attachmentSize != null
+          ? {
+              path: r.attachmentPath,
+              name: r.attachmentName,
+              mime: r.attachmentMime,
+              size: r.attachmentSize,
+            }
+          : null,
       completedAt: r.completedAt.toISOString(),
     };
   });

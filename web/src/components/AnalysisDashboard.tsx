@@ -266,6 +266,7 @@ export function AnalysisDashboard({
             pieceIndex,
             notes: trimmedNotes,
             source: 'manual',
+            attachment: null,
             completedAt: new Date().toISOString(),
           };
         }

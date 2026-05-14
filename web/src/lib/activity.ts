@@ -77,6 +77,7 @@ export async function getAnalysisActivity(
         pieceIndex: true,
         source: true,
         notes: true,
+        attachmentName: true,
         completedAt: true,
         draft: { select: { recIndex: true, recTitle: true } },
       },
@@ -158,6 +159,9 @@ export async function getAnalysisActivity(
       summary = `Marked piece done: ${c.notes.slice(0, 80)}`;
     } else {
       summary = 'Marked piece done (handled externally)';
+    }
+    if (c.attachmentName) {
+      summary += ` · 📎 ${c.attachmentName}`;
     }
     items.push({
       at: c.completedAt.toISOString(),

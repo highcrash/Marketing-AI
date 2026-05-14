@@ -216,6 +216,14 @@ model PieceCompletion {
   notes       String?
   /// Distinguishes self-marked vs auto-marked completions.
   source      String   @default("manual")
+  /// Optional proof-of-work attachment: screenshot of the sent SMS,
+  /// receipt for the printed in-store cards, photo of the finished
+  /// physical campaign, etc. All four fields are populated together
+  /// when an attachment is present and null when none.
+  attachmentPath String?
+  attachmentName String?
+  attachmentMime String?
+  attachmentSize Int?
   completedAt DateTime @default(now())
 
   draft CampaignDraft @relation(fields: [draftId], references: [id])

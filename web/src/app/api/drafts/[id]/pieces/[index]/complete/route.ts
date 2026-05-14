@@ -21,6 +21,16 @@ async function ownershipOk(draftId: string): Promise<boolean> {
 interface PostBody {
   notes?: unknown;
   source?: unknown;
+  /// Proof-of-work attachment. The client uploads the file via
+  /// /api/uploads first (which gives back publicPath/size/etc.) and
+  /// then POSTs those fields here. Pass null to clear a prior
+  /// attachment; omit the key to leave it unchanged.
+  attachment?: {
+    path?: unknown;
+    name?: unknown;
+    mime?: unknown;
+    size?: unknown;
+  } | null;
 }
 
 export async function POST(
@@ -46,11 +56,41 @@ export async function POST(
       ? body.source.trim().slice(0, 40)
       : 'manual';
 
+  let attachment: { path: string; name: string; mime: string; size: number } | null | undefined;
+  if (body.attachment === null) {
+    attachment = null;
+  } else if (body.attachment && typeof body.attachment === 'object') {
+    const a = body.attachment;
+    const path = typeof a.path === 'string' ? a.path.trim() : '';
+    const name = typeof a.name === 'string' ? a.name.trim() : '';
+    const mime = typeof a.mime === 'string' ? a.mime.trim() : '';
+    const size = typeof a.size === 'number' ? a.size : null;
+    // /api/uploads writes under /uploads/<sha>.<ext>; reject anything
+    // that doesn't match the shape so we can't be tricked into pointing
+    // a completion at an arbitrary path.
+    if (
+      path.length > 0 &&
+      name.length > 0 &&
+      mime.length > 0 &&
+      size != null &&
+      size > 0 &&
+      /^\/uploads\/[a-f0-9]+\.[a-z0-9]+$/i.test(path)
+    ) {
+      attachment = { path, name: name.slice(0, 200), mime: mime.slice(0, 120), size };
+    }
+  }
+
   try {
     if (!(await ownershipOk(draftId))) {
       return NextResponse.json({ error: 'draft_not_found' }, { status: 404 });
     }
-    const completion = await markPieceComplete({ draftId, pieceIndex, notes, source });
+    const completion = await markPieceComplete({
+      draftId,
+      pieceIndex,
+      notes,
+      source,
+      attachment,
+    });
     return NextResponse.json({ completion });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'unknown error';
