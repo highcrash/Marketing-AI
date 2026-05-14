@@ -233,8 +233,7 @@ async function fetchRecentLogs(): Promise<RecentLogEntry[]> {
       'journalctl -u marketing-ai.service --no-pager --lines=30 --output=short-iso 2>/dev/null || true',
       { timeout: 4_000, maxBuffer: 256 * 1024 },
     );
-    const text = typeof stdout === 'string' ? stdout : stdout.toString('utf-8');
-    const lines = text
+    const lines = stdout
       .split('\n')
       .map((s) => s.trim())
       .filter((s) => s.length > 0 && !s.startsWith('--'));
