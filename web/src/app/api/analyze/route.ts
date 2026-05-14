@@ -31,6 +31,7 @@ export async function POST() {
       model: process.env.ANTHROPIC_MODEL,
       goalTags: goals.tags,
       goalNotes: goals.notes,
+      businessId: business.id,
     });
 
     const analysisId = await saveAnalysis(business.id, result);

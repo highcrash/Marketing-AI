@@ -361,6 +361,142 @@ export async function publishPost(params: {
   }
 }
 
+export interface FacebookPageInsightsSnapshot {
+  pageId: string;
+  pageName: string;
+  /// Total fan/follower count (currently the same number on most pages
+  /// since Meta unified the two metrics).
+  fans: number | null;
+  followers: number | null;
+  /// 7-day "talking about" count — Meta's rolling-window engagement
+  /// proxy. Available without read_insights.
+  talkingAbout: number | null;
+  /// Up to 5 most recent posts. We can't pull reach/impressions
+  /// without read_insights so we settle for the engagement counts that
+  /// are exposed on the post node directly. Empty array if the page
+  /// has no posts.
+  recentPosts: Array<{
+    id: string;
+    message: string | null;
+    createdAt: string;
+    likes: number | null;
+    comments: number | null;
+    reactions: number | null;
+    shares: number | null;
+  }>;
+}
+
+/// Pull the page-level numbers that don't require the read_insights
+/// permission scope (which most Page Access Tokens don't have unless
+/// the admin explicitly grants it during OAuth). What we get without
+/// it: fan/follower count, talking-about count, recent posts with
+/// likes/comments/reactions/shares. Reach + impressions per post
+/// require read_insights, so we skip them — Claude does fine with
+/// engagement counts as a proxy.
+///
+/// Returns null when both the page-fields call AND the posts call
+/// fail (e.g. token completely rejected). Partial failures still
+/// return a snapshot.
+export async function fetchPageInsights(params: {
+  pageId: string;
+  pageName: string;
+  accessToken: string;
+}): Promise<FacebookPageInsightsSnapshot | null> {
+  const { pageId, pageName, accessToken } = params;
+  try {
+    const [pageRes, postsRes] = await Promise.all([
+      fetch(
+        `${GRAPH_BASE}/${encodeURIComponent(pageId)}` +
+          `?fields=id,name,fan_count,followers_count,talking_about_count` +
+          `&access_token=${encodeURIComponent(accessToken)}`,
+      ),
+      fetch(
+        `${GRAPH_BASE}/${encodeURIComponent(pageId)}/posts` +
+          `?fields=id,message,created_time,shares,likes.summary(true),comments.summary(true),reactions.summary(true)` +
+          `&limit=5` +
+          `&access_token=${encodeURIComponent(accessToken)}`,
+      ),
+    ]);
+
+    interface PageFields {
+      id?: string;
+      name?: string;
+      fan_count?: number;
+      followers_count?: number;
+      talking_about_count?: number;
+      error?: GraphError;
+    }
+    interface PostRow {
+      id: string;
+      message?: string;
+      created_time?: string;
+      shares?: { count?: number };
+      likes?: { summary?: { total_count?: number } };
+      comments?: { summary?: { total_count?: number } };
+      reactions?: { summary?: { total_count?: number } };
+    }
+
+    let pageFields: PageFields | null = null;
+    if (pageRes.ok) {
+      const body = (await pageRes.json()) as PageFields;
+      if (!body.error) pageFields = body;
+    }
+
+    const recentPosts: FacebookPageInsightsSnapshot['recentPosts'] = [];
+    if (postsRes.ok) {
+      const postsBody = (await postsRes.json()) as { data?: PostRow[]; error?: GraphError };
+      if (!postsBody.error) {
+        for (const p of postsBody.data ?? []) {
+          recentPosts.push({
+            id: p.id,
+            message: p.message ?? null,
+            createdAt: p.created_time ?? new Date().toISOString(),
+            likes: p.likes?.summary?.total_count ?? null,
+            comments: p.comments?.summary?.total_count ?? null,
+            reactions: p.reactions?.summary?.total_count ?? null,
+            shares: p.shares?.count ?? null,
+          });
+        }
+      }
+    }
+
+    if (!pageFields && recentPosts.length === 0) return null;
+
+    return {
+      pageId,
+      pageName: pageFields?.name ?? pageName,
+      fans: pageFields?.fan_count ?? null,
+      followers: pageFields?.followers_count ?? null,
+      talkingAbout: pageFields?.talking_about_count ?? null,
+      recentPosts,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/// Pull insights for every active connection on a business and return
+/// the snapshots that succeeded. Tokens that have gone stale produce
+/// nulls which we filter out — the audit then proceeds without FB
+/// data for those pages.
+export async function fetchAllPageInsights(
+  businessId: string,
+): Promise<FacebookPageInsightsSnapshot[]> {
+  const conns = await prisma.facebookConnection.findMany({
+    where: { businessId, active: true },
+  });
+  const results = await Promise.all(
+    conns.map((c) =>
+      fetchPageInsights({
+        pageId: c.pageId,
+        pageName: c.pageName,
+        accessToken: c.accessToken,
+      }),
+    ),
+  );
+  return results.filter((r): r is FacebookPageInsightsSnapshot => r !== null);
+}
+
 export async function listRecentPostEvents(
   businessId: string,
   take = 50,

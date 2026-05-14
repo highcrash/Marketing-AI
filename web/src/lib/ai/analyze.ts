@@ -13,6 +13,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { RestoraClient } from '../restora-client';
+import { fetchAllPageInsights, type FacebookPageInsightsSnapshot } from '../facebook';
 import { DEFAULT_AUDIT_SKILLS, loadSkillsBySlug, type Skill } from './skills';
 
 export interface AnalysisOptions {
@@ -21,6 +22,10 @@ export interface AnalysisOptions {
   skills?: readonly string[];
   /** Limit the days of sales history pulled. Default 90. */
   salesWindowDays?: number;
+  /// Business id — when set, the snapshot includes Facebook Page
+  /// insights for every active connection on that business. When unset
+  /// the audit runs without FB data (current behaviour).
+  businessId?: string;
   /// Owner-set marketing goals. When `tags` is non-empty Claude is told
   /// to bias recommendations toward those goals; when both are empty the
   /// model falls back to inferring goals from the data (current
@@ -199,6 +204,10 @@ interface BusinessSnapshot {
   reviews: unknown;
   marketingCampaigns: unknown;
   expensesRecent: unknown;
+  /// Facebook Page insights — one entry per active connection. Omitted
+  /// from the JSON entirely when no FB connections exist or all token
+  /// fetches failed.
+  facebookPages?: FacebookPageInsightsSnapshot[];
 }
 
 async function fetchSnapshot(
@@ -262,10 +271,16 @@ export async function runAnalysis(
   const salesWindowDays = options.salesWindowDays ?? 90;
   const skillSlugs = options.skills ?? DEFAULT_AUDIT_SKILLS;
 
-  const [{ snapshot, profileMeta }, skills] = await Promise.all([
+  const [{ snapshot, profileMeta }, skills, fbInsights] = await Promise.all([
     fetchSnapshot(restora, salesWindowDays),
     loadSkillsBySlug(skillSlugs),
+    options.businessId
+      ? fetchAllPageInsights(options.businessId).catch(() => [] as FacebookPageInsightsSnapshot[])
+      : Promise.resolve([] as FacebookPageInsightsSnapshot[]),
   ]);
+  if (fbInsights.length > 0) {
+    snapshot.facebookPages = fbInsights;
+  }
 
   const skillsText = skills.map(skillSystemBlock).join('\n\n');
 
@@ -300,10 +315,18 @@ ${goalTags.length > 0 ? `Selected goal tags: ${goalTags.join(', ')}` : ''}${
     messages: [
       {
         role: 'user',
-        content: `Audit this business's marketing position. The JSON below is the full data snapshot from their POS. Money fields are in MINOR UNITS (paisa for BDT — divide by 100 for taka).
+        content: `Audit this business's marketing position. The JSON below is the full data snapshot from their POS${
+          snapshot.facebookPages && snapshot.facebookPages.length > 0
+            ? ' AND their connected Facebook Page(s) — see the `facebookPages` field for 28-day reach/engagement/follower stats plus the last 5 posts'
+            : ''
+        }. Money fields are in MINOR UNITS (paisa for BDT — divide by 100 for taka).
 
 Sales window: last ${salesWindowDays} days.
-${ownerGoalsBlock}
+${
+  snapshot.facebookPages && snapshot.facebookPages.length > 0
+    ? `Facebook insights window: last 28 days. When you recommend Facebook tactics, ground them in the actual page numbers — current fans, reach, engagement, recent post performance — instead of generic advice.\n`
+    : ''
+}${ownerGoalsBlock}
 \`\`\`json
 ${JSON.stringify(snapshot, null, 2)}
 \`\`\`
