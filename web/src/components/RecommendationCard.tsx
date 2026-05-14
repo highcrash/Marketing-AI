@@ -4,6 +4,7 @@ import type { Recommendation } from '@/lib/ai/analyze';
 import type { DraftRow } from '@/lib/drafts';
 import type { PieceCompletionRow } from '@/lib/piece-completions';
 import type { SmsSendRow } from '@/lib/sms-sends';
+import { computeRecStatus } from '@/lib/rec-status';
 import { DraftView } from './DraftView';
 
 const PRIORITY_STYLES: Record<Recommendation['priority'], string> = {
@@ -11,51 +12,6 @@ const PRIORITY_STYLES: Record<Recommendation['priority'], string> = {
   medium: 'bg-amber-500 text-white',
   low: 'bg-zinc-400 text-white',
 };
-
-interface ProgressBadge {
-  label: string;
-  className: string;
-}
-
-/// Single source of truth for "where is this recommendation in its
-/// lifecycle." The badge shows up next to the priority pill in the rec
-/// header so the user can scan the list and see what's progressed.
-function computeProgressBadge(
-  draft: DraftRow | undefined,
-  completionsByPiece: Record<number, PieceCompletionRow | null>,
-): ProgressBadge {
-  if (!draft) {
-    return {
-      label: 'Not drafted',
-      className:
-        'bg-zinc-100 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-800',
-    };
-  }
-  if (draft.status === 'REJECTED') {
-    return { label: 'Rejected', className: 'bg-amber-600 text-white' };
-  }
-  if (draft.status === 'PENDING_REVIEW') {
-    return {
-      label: 'Drafted',
-      className: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
-    };
-  }
-  const totalPieces = draft.payload.pieces?.length ?? 0;
-  const completedPieces = Object.values(completionsByPiece ?? {}).filter(Boolean).length;
-  if (totalPieces === 0 || completedPieces === 0) {
-    return { label: 'Approved', className: 'bg-emerald-600 text-white' };
-  }
-  if (completedPieces < totalPieces) {
-    return {
-      label: `In progress · ${completedPieces}/${totalPieces}`,
-      className: 'bg-blue-600 text-white',
-    };
-  }
-  return {
-    label: `Done · ${totalPieces}/${totalPieces}`,
-    className: 'bg-emerald-700 text-white',
-  };
-}
 
 export function RecommendationCard({
   rec,
@@ -94,7 +50,7 @@ export function RecommendationCard({
     notes?: string | null,
   ) => void;
 }) {
-  const progress = computeProgressBadge(draft, completionsByPiece);
+  const progress = computeRecStatus(draft, completionsByPiece);
   return (
     <article className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-5">
       <header className="flex items-start gap-3 mb-3">
@@ -107,7 +63,7 @@ export function RecommendationCard({
         </span>
         <h5 className="flex-1 font-semibold text-zinc-900 dark:text-zinc-100">{rec.title}</h5>
         <span
-          className={`text-[10px] tracking-widest uppercase font-medium px-2 py-0.5 whitespace-nowrap ${progress.className}`}
+          className={`text-[10px] tracking-widest uppercase font-medium px-2 py-0.5 whitespace-nowrap ${progress.badgeClass}`}
           title="Progress on this recommendation"
         >
           {progress.label}

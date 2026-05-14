@@ -1,9 +1,11 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import type { AnalysisResult, Recommendation } from '@/lib/ai/analyze';
 import type { CompletionsByKey, DraftsByRecIndex } from '@/lib/analyses';
 import type { PieceCompletionRow } from '@/lib/piece-completions';
 import type { SmsSendRow } from '@/lib/sms-sends';
+import { computeRecStatus, type RecStatus } from '@/lib/rec-status';
 import { ActivityPanel } from './ActivityPanel';
 import { AuditComparisonPanel } from './AuditComparisonPanel';
 import { RecommendationCard } from './RecommendationCard';
@@ -81,13 +83,61 @@ export function AnalysisView({
   onSegmentBlastSent,
   onToggleCompletion,
 }: AnalysisViewProps) {
+  type Filter = 'all' | 'open' | RecStatus;
+  const [filter, setFilter] = useState<Filter>('all');
+
+  /// Compute status per rec once so both the chip-counts and the
+  /// per-card filter use the same numbers.
+  const recsWithStatus = useMemo(() => {
+    return result.recommendations.map((rec, recIndex) => {
+      const draft = drafts[recIndex];
+      const perPieceCompletions: Record<number, PieceCompletionRow | null> = {};
+      if (draft) {
+        for (const [key, val] of Object.entries(completions)) {
+          if (key.startsWith(`${draft.id}:`)) {
+            const idx = Number(key.slice(draft.id.length + 1));
+            if (!Number.isNaN(idx)) perPieceCompletions[idx] = val;
+          }
+        }
+      }
+      const info = computeRecStatus(draft, perPieceCompletions);
+      return { rec, recIndex, status: info.status };
+    });
+  }, [result.recommendations, drafts, completions]);
+
+  const counts = useMemo(() => {
+    const c: Record<RecStatus, number> = {
+      'not-drafted': 0,
+      drafted: 0,
+      rejected: 0,
+      approved: 0,
+      'in-progress': 0,
+      done: 0,
+    };
+    for (const r of recsWithStatus) c[r.status] += 1;
+    return c;
+  }, [recsWithStatus]);
+
+  const openCount =
+    counts['not-drafted'] + counts.drafted + counts.approved + counts['in-progress'];
+
+  /// Filter: 'open' means anything still needing work (not done, not
+  /// rejected). Status-specific filters match exactly.
+  function passesFilter(status: RecStatus): boolean {
+    if (filter === 'all') return true;
+    if (filter === 'open')
+      return status === 'not-drafted' || status === 'drafted' || status === 'approved' || status === 'in-progress';
+    return status === filter;
+  }
+
   // Keep recommendations in their original order so recIndex matches the
   // canonical position on the saved Analysis row (drafts reference recs by
-  // index). We group visually within that ordering.
-  const orderedWithIndex = result.recommendations.map((rec, recIndex) => ({ rec, recIndex }));
+  // index). We group visually within that ordering — but only after the
+  // filter is applied so empty categories collapse.
+  const filteredOrdered = recsWithStatus.filter((r) => passesFilter(r.status));
   const grouped: Record<string, Array<{ rec: Recommendation; recIndex: number }>> = {};
-  for (const item of orderedWithIndex) {
-    (grouped[item.rec.category] ??= []).push(item);
+  for (const item of filteredOrdered) {
+    (grouped[item.rec.category] ??= []).push({ rec: item.rec, recIndex: item.recIndex });
   }
   for (const key of Object.keys(grouped)) {
     grouped[key].sort((a, b) => priorityRank(a.rec.priority) - priorityRank(b.rec.priority));
@@ -138,10 +188,32 @@ export function AnalysisView({
         </ul>
       </section>
 
-      <section className="space-y-8">
-        <h3 className="text-sm font-semibold uppercase tracking-widest text-zinc-500">
-          Recommendations · {result.recommendations.length}
-        </h3>
+      <section className="space-y-6">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h3 className="text-sm font-semibold uppercase tracking-widest text-zinc-500">
+            Recommendations · {result.recommendations.length}
+          </h3>
+          <div className="flex flex-wrap items-center gap-1 text-[10px] uppercase tracking-widest">
+            <FilterChip label={`All · ${result.recommendations.length}`} active={filter === 'all'} onClick={() => setFilter('all')} />
+            <FilterChip label={`Open · ${openCount}`} active={filter === 'open'} onClick={() => setFilter('open')} tone="open" />
+            <FilterChip label={`Not drafted · ${counts['not-drafted']}`} active={filter === 'not-drafted'} onClick={() => setFilter('not-drafted')} tone="muted" />
+            <FilterChip label={`Drafted · ${counts.drafted}`} active={filter === 'drafted'} onClick={() => setFilter('drafted')} tone="muted" />
+            <FilterChip label={`Approved · ${counts.approved}`} active={filter === 'approved'} onClick={() => setFilter('approved')} tone="success" />
+            <FilterChip label={`In progress · ${counts['in-progress']}`} active={filter === 'in-progress'} onClick={() => setFilter('in-progress')} tone="info" />
+            <FilterChip label={`Done · ${counts.done}`} active={filter === 'done'} onClick={() => setFilter('done')} tone="success" />
+            {counts.rejected > 0 && (
+              <FilterChip label={`Rejected · ${counts.rejected}`} active={filter === 'rejected'} onClick={() => setFilter('rejected')} tone="warning" />
+            )}
+          </div>
+        </div>
+        {filteredOrdered.length === 0 && (
+          <p className="text-xs text-zinc-500 italic">
+            No recommendations match this filter.{' '}
+            <button onClick={() => setFilter('all')} className="text-red-600 hover:underline not-italic">
+              Clear filter
+            </button>
+          </p>
+        )}
         {Object.entries(grouped).map(([category, recs]) => (
           <div key={category}>
             <h4 className="text-sm font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider border-b border-zinc-200 dark:border-zinc-800 pb-2 mb-4">
@@ -210,6 +282,49 @@ export function AnalysisView({
         ))}
       </section>
     </div>
+  );
+}
+
+type ChipTone = 'muted' | 'success' | 'info' | 'warning' | 'open';
+
+function FilterChip({
+  label,
+  active,
+  onClick,
+  tone,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  tone?: ChipTone;
+}) {
+  const inactive =
+    tone === 'success'
+      ? 'text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+      : tone === 'info'
+      ? 'text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-900 hover:bg-blue-50 dark:hover:bg-blue-950/40'
+      : tone === 'warning'
+      ? 'text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900 hover:bg-amber-50 dark:hover:bg-amber-950/40'
+      : tone === 'open'
+      ? 'text-red-700 dark:text-red-400 border-red-200 dark:border-red-900 hover:bg-red-50 dark:hover:bg-red-950/40'
+      : 'text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900';
+  const activeCls =
+    tone === 'success'
+      ? 'bg-emerald-600 text-white border-emerald-600'
+      : tone === 'info'
+      ? 'bg-blue-600 text-white border-blue-600'
+      : tone === 'warning'
+      ? 'bg-amber-600 text-white border-amber-600'
+      : tone === 'open'
+      ? 'bg-red-600 text-white border-red-600'
+      : 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-zinc-900 dark:border-zinc-100';
+  return (
+    <button
+      onClick={onClick}
+      className={`px-2 py-1 border ${active ? activeCls : inactive}`}
+    >
+      {label}
+    </button>
   );
 }
 
