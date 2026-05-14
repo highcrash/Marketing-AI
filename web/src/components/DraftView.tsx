@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, CheckCircle2, Circle, Clock, Copy, RotateCcw, Send, Sparkles, Users, X } from 'lucide-react';
+import { Check, CheckCircle2, Circle, Clock, Copy, Pencil, RotateCcw, Save, Send, Sparkles, Users, X } from 'lucide-react';
 
 import type { DraftPiece } from '@/lib/ai/draft';
 import type { DraftRow } from '@/lib/drafts';
@@ -356,7 +356,16 @@ function PieceCard({
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [showFacebookForm, setShowFacebookForm] = useState(false);
   const [phone, setPhone] = useState('');
-  /// Per-form editable body. Reset to piece.content whenever the user
+  /// The single source of truth for piece title/body/notes within this
+  /// card. Initialised from the draft payload; mutated locally after a
+  /// successful PATCH so the UI reflects the edit without a full
+  /// dashboard re-fetch.
+  const [localPiece, setLocalPiece] = useState({
+    title: piece.title,
+    content: piece.content,
+    notes: piece.notes ?? null,
+  });
+  /// Per-form editable body. Reset to localPiece.content whenever the user
   /// opens the form fresh — they can edit before sending without
   /// mutating the canonical draft.
   const [editedBody, setEditedBody] = useState(piece.content);
@@ -366,6 +375,16 @@ function PieceCard({
   /// already-complete piece.
   const [showCompletionForm, setShowCompletionForm] = useState(false);
   const [completionNotes, setCompletionNotes] = useState('');
+  /// Inline piece-content editor. Lets the user fix typos / tweak copy
+  /// without burning a Claude refine. Persists to the draft payload in
+  /// place — historical sends keep their locked body, the UI shows the
+  /// latest edited content for any future actions.
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editTitle, setEditTitle] = useState(piece.title);
+  const [editContent, setEditContent] = useState(piece.content);
+  const [editNotes, setEditNotes] = useState(piece.notes ?? '');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const isBrief = BRIEF_ASSET_TYPES.includes(piece.assetType);
   const isSmsPiece = piece.assetType === 'sms';
   const showSmsControls = isSmsPiece && canSendSms;
@@ -379,7 +398,7 @@ function PieceCard({
   const isComplete = !!completion;
 
   async function copy() {
-    await navigator.clipboard.writeText(piece.content);
+    await navigator.clipboard.writeText(localPiece.content);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }
@@ -418,6 +437,53 @@ function PieceCard({
     setCompletionNotes('');
   }
 
+  function openEditPiece() {
+    setEditTitle(localPiece.title);
+    setEditContent(localPiece.content);
+    setEditNotes(localPiece.notes ?? '');
+    setEditError(null);
+    setShowEditForm(true);
+  }
+
+  async function savePieceEdit() {
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      const trimmedTitle = editTitle.trim().slice(0, 200);
+      const res = await fetch(
+        `/api/drafts/${encodeURIComponent(draftId)}/pieces/${pieceIndex}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: trimmedTitle.length > 0 ? trimmedTitle : undefined,
+            content: editContent,
+            notes: editNotes,
+          }),
+        },
+      );
+      const json = (await res.json()) as { piece?: typeof piece; error?: string; message?: string };
+      if (!res.ok || json.error) {
+        throw new Error(json.message ?? `HTTP ${res.status}`);
+      }
+      if (json.piece) {
+        setLocalPiece({
+          title: json.piece.title,
+          content: json.piece.content,
+          notes: json.piece.notes ?? null,
+        });
+        // Reset transient form-state too so the next "Send to phone"
+        // form picks up the new canonical body instead of the stale one.
+        setEditedBody(json.piece.content);
+      }
+      setShowEditForm(false);
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'unknown error');
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
   function submitSend() {
     const trimmedPhone = phone.trim();
     if (trimmedPhone.length < 6) return;
@@ -425,11 +491,11 @@ function PieceCard({
     if (trimmedBody.length === 0) return;
     // Only send the override when it differs from the canonical content
     // — keeps the server-side audit row cleaner.
-    const override = trimmedBody !== piece.content ? trimmedBody : null;
+    const override = trimmedBody !== localPiece.content ? trimmedBody : null;
     onSendSms(trimmedPhone, override);
     setShowSendForm(false);
     setPhone('');
-    setEditedBody(piece.content);
+    setEditedBody(localPiece.content);
   }
 
   return (
@@ -462,7 +528,7 @@ function PieceCard({
             {ASSET_TYPE_LABEL[piece.assetType]}
           </span>
           <span className="text-zinc-500">{channelLabel(piece.channel)}</span>
-          <span className="text-zinc-600 dark:text-zinc-400">· {piece.title}</span>
+          <span className="text-zinc-600 dark:text-zinc-400">· {localPiece.title}</span>
         </div>
         <div className="flex items-center gap-1">
           {!isBrief && (
@@ -472,6 +538,16 @@ function PieceCard({
             >
               <Copy size={11} />
               {copied ? 'Copied' : 'Copy'}
+            </button>
+          )}
+          {!showEditForm && (
+            <button
+              onClick={openEditPiece}
+              className="inline-flex items-center gap-1 text-[10px] text-zinc-600 dark:text-zinc-400 hover:text-red-600 px-2 py-0.5 border border-zinc-200 dark:border-zinc-800"
+              title="Edit this piece in place (typo fix, tweak copy) without re-running Claude"
+            >
+              <Pencil size={11} />
+              Edit
             </button>
           )}
           {showSmsControls && !showSendForm && !showBlastForm && !showScheduleForm && (
@@ -517,13 +593,84 @@ function PieceCard({
       </header>
 
       <pre className="px-3 py-3 text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap font-sans leading-relaxed">
-        {piece.content}
+        {localPiece.content}
       </pre>
 
-      {piece.notes && (
+      {localPiece.notes && !showEditForm && (
         <p className="px-3 pb-3 text-[11px] text-zinc-500 border-t border-zinc-100 dark:border-zinc-900 pt-2">
-          {piece.notes}
+          {localPiece.notes}
         </p>
+      )}
+
+      {showEditForm && (
+        <div className="border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/30 px-3 py-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] uppercase tracking-widest text-zinc-500">
+              Edit piece in place — no Claude refine
+            </p>
+            <button
+              onClick={() => {
+                setShowEditForm(false);
+                setEditError(null);
+              }}
+              className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+              aria-label="Cancel"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <label className="block">
+            <span className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">Title</span>
+            <input
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              disabled={savingEdit}
+              maxLength={200}
+              className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 focus:outline-none focus:border-red-600"
+            />
+          </label>
+          <label className="block">
+            <span className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">Body</span>
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              disabled={savingEdit}
+              rows={Math.min(14, Math.max(4, editContent.split('\n').length + 1))}
+              maxLength={60000}
+              className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 focus:outline-none focus:border-red-600 resize-y font-sans"
+            />
+            <div className="text-[10px] text-zinc-500 mt-1">{editContent.length} chars</div>
+          </label>
+          <label className="block">
+            <span className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">
+              Notes (internal — what kind of asset is needed, target audience, etc.)
+            </span>
+            <textarea
+              value={editNotes}
+              onChange={(e) => setEditNotes(e.target.value)}
+              disabled={savingEdit}
+              rows={2}
+              maxLength={2000}
+              className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 focus:outline-none focus:border-red-600 resize-y"
+            />
+          </label>
+          {editError && (
+            <p className="text-xs text-red-600 dark:text-red-400 font-mono break-all">{editError}</p>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-zinc-500">
+              Historical sends keep the body they were sent with; new sends use the edited version.
+            </span>
+            <button
+              onClick={savePieceEdit}
+              disabled={savingEdit || editContent.trim().length === 0}
+              className="bg-red-600 hover:bg-red-700 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
+            >
+              <Save size={11} />
+              {savingEdit ? 'Saving…' : 'Save edits'}
+            </button>
+          </div>
+        </div>
       )}
 
       {isComplete && completion && !showCompletionForm && (
@@ -626,7 +773,7 @@ function PieceCard({
               onClick={() => {
                 setShowSendForm(false);
                 setPhone('');
-                setEditedBody(piece.content);
+                setEditedBody(localPiece.content);
               }}
               className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
               aria-label="Cancel"
@@ -649,11 +796,11 @@ function PieceCard({
             <div className="flex items-center justify-between mt-1">
               <span className="text-[10px] text-zinc-500">
                 {editedBody.length} chars
-                {editedBody !== piece.content && ' · edited'}
+                {editedBody !== localPiece.content && ' · edited'}
               </span>
-              {editedBody !== piece.content && (
+              {editedBody !== localPiece.content && (
                 <button
-                  onClick={() => setEditedBody(piece.content)}
+                  onClick={() => setEditedBody(localPiece.content)}
                   className="text-[10px] text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
                 >
                   Reset to original
@@ -695,7 +842,7 @@ function PieceCard({
         <SegmentBlastPanel
           draftId={draftId}
           pieceIndex={pieceIndex}
-          pieceContent={piece.content}
+          pieceContent={localPiece.content}
           onClose={() => setShowBlastForm(false)}
           onSent={onSegmentBlastSent}
         />
@@ -705,7 +852,7 @@ function PieceCard({
         <SchedulePanel
           draftId={draftId}
           pieceIndex={pieceIndex}
-          pieceContent={piece.content}
+          pieceContent={localPiece.content}
           onClose={() => setShowScheduleForm(false)}
         />
       )}
@@ -714,7 +861,7 @@ function PieceCard({
         <FacebookPostPanel
           draftId={draftId}
           pieceIndex={pieceIndex}
-          pieceContent={piece.content}
+          pieceContent={localPiece.content}
           onClose={() => setShowFacebookForm(false)}
           onPosted={onSegmentBlastSent}
         />
