@@ -72,25 +72,33 @@ try {
   # Retry up to 3 times with backoff before giving up.
   function Invoke-Tar {
     param([string]$Workdir, [string]$Tarball)
+    # bsdtar on Windows + PowerShell's `2>` redirection of native commands
+    # was producing spurious "tar (child): Cannot ... resolve failed"
+    # errors that didn't show up when the same command ran through cmd.
+    # Running it via cmd.exe is the reliable path: cmd does the stderr
+    # redirection cleanly and the tar process sees no environmental
+    # weirdness. Still keeps a retry loop in case the build process
+    # genuinely holds a handle for a moment.
     Push-Location $Workdir
     try {
-      for ($attempt = 1; $attempt -le 5; $attempt++) {
+      for ($attempt = 1; $attempt -le 3; $attempt++) {
         if (Test-Path $Tarball) { Remove-Item $Tarball -Force }
-        # Capture stderr so we can see WHICH file tar bails on. Exit 2
-        # = "warning, some files vanished mid-read"; usually Windows
-        # holding a handle on something the build just touched.
         $stderrFile = Join-Path $env:TEMP "mai-tar-err-$attempt.txt"
-        & tar -czf $Tarball . 2> $stderrFile
-        if ($LASTEXITCODE -eq 0) {
+        if (Test-Path $stderrFile) { Remove-Item $stderrFile -Force }
+        # Quote both paths since they may contain spaces.
+        $cmdLine = "tar -czf `"$Tarball`" . 2> `"$stderrFile`""
+        & cmd.exe /c $cmdLine | Out-Null
+        $rc = $LASTEXITCODE
+        if ($rc -eq 0) {
           Remove-Item $stderrFile -Force -ErrorAction SilentlyContinue
           return
         }
         $errs = if (Test-Path $stderrFile) { Get-Content $stderrFile -Raw } else { '' }
         $head = if ($errs.Length -gt 400) { $errs.Substring(0, 400) } else { $errs }
-        Write-Warning "tar attempt $attempt exit $LASTEXITCODE -- stderr: $head"
+        Write-Warning "tar attempt $attempt exit $rc -- stderr: $head"
         Start-Sleep -Seconds $attempt
       }
-      throw "tar failed after 5 attempts (exit $LASTEXITCODE) -- see /tmp stderr files"
+      throw "tar failed after 3 attempts (exit $rc) -- stderr files at `$env:TEMP\mai-tar-err-N.txt"
     } finally { Pop-Location }
   }
 
