@@ -1,0 +1,3 @@
+# Production secrets — never commit
+prod.env
+.deploy_pw

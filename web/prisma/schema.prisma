@@ -7,7 +7,12 @@
 // (timestamps, token counts, summary preview, recommendation count).
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // Targets we need at runtime: 'native' covers the local Windows dev
+  // box; 'debian-openssl-3.0.x' covers the Ubuntu 24.04 droplet.
+  // Without the explicit Linux target, `next build` on Windows only
+  // ships the Windows query engine and the server crashes on boot.
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
