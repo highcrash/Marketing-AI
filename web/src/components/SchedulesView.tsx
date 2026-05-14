@@ -100,7 +100,7 @@ export function SchedulesView() {
   return (
     <div className="space-y-8">
       {error && (
-        <div className="border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950 p-3 text-xs text-red-700 dark:text-red-300 font-mono break-all">
+        <div className="border border-primary/40 bg-destructive/10 p-3 text-xs text-destructive font-mono break-all">
           {error}
         </div>
       )}
@@ -162,7 +162,7 @@ export function SchedulesView() {
         </Section>
       )}
 
-      {loading && <p className="text-[11px] text-zinc-500">Loading…</p>}
+      {loading && <p className="text-[11px] text-muted-foreground">Loading…</p>}
     </div>
   );
 }
@@ -178,7 +178,7 @@ function Section({
 }) {
   return (
     <section>
-      <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-3">
+      <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground mb-3">
         {title} · {count}
       </h2>
       {children}
@@ -188,7 +188,7 @@ function Section({
 
 function Empty({ hint }: { hint: string }) {
   return (
-    <div className="border border-dashed border-zinc-300 dark:border-zinc-800 p-8 text-center text-[11px] text-zinc-500">
+    <div className="border border-dashed border-border p-8 text-center text-[11px] text-muted-foreground">
       {hint}
     </div>
   );
@@ -196,8 +196,8 @@ function Empty({ hint }: { hint: string }) {
 
 function Table({ children }: { children: React.ReactNode }) {
   return (
-    <div className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
-      <ul className="divide-y divide-zinc-100 dark:divide-zinc-900">{children}</ul>
+    <div className="border border-border bg-card">
+      <ul className="divide-y divide-border">{children}</ul>
     </div>
   );
 }
@@ -220,17 +220,17 @@ function RecurringRow({
   const summary = summarise(item.config, item.kind);
   return (
     <li className="flex items-center gap-3 px-3 py-3 text-[12px]">
-      <Repeat size={12} className={paused ? 'text-zinc-400' : 'text-blue-600'} />
+      <Repeat size={12} className={paused ? 'text-muted-foreground/70' : 'text-primary'} />
       <div className="flex-1 min-w-0">
-        <div className="text-zinc-800 dark:text-zinc-200">
+        <div className="text-foreground">
           <span className="font-medium">{cadence}</span>{' '}
-          <span className="text-zinc-500">· {summary}</span>
+          <span className="text-muted-foreground">· {summary}</span>
         </div>
-        <div className="text-[10px] text-zinc-500 mt-0.5 truncate">
+        <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
           {paused ? 'PAUSED' : `Next ${next}`} · {item.runCount} run{item.runCount === 1 ? '' : 's'} · <span className="italic">{item.recTitle}</span>
         </div>
         {item.lastError && (
-          <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 truncate">
+          <div className="text-[10px] text-amber-400 mt-0.5 truncate">
             Last error: {item.lastError}
           </div>
         )}
@@ -265,14 +265,14 @@ function OnceRow({
   const summary = summarise(item.config, item.kind);
   const statusTone =
     item.status === 'PENDING'
-      ? 'text-zinc-500'
+      ? 'text-muted-foreground'
       : item.status === 'COMPLETED'
-      ? 'text-emerald-600 dark:text-emerald-400'
+      ? 'text-emerald-400'
       : item.status === 'RUNNING'
-      ? 'text-blue-600 dark:text-blue-400'
+      ? 'text-primary'
       : item.status === 'CANCELED'
-      ? 'text-zinc-500'
-      : 'text-red-600 dark:text-red-400';
+      ? 'text-muted-foreground'
+      : 'text-destructive';
   return (
     <li className="flex items-center gap-3 px-3 py-3 text-[12px]">
       {showStatus ? (
@@ -280,18 +280,18 @@ function OnceRow({
           {item.status}
         </span>
       ) : (
-        <span className="uppercase tracking-widest text-[9px] text-zinc-500 min-w-[60px]">{item.status}</span>
+        <span className="uppercase tracking-widest text-[9px] text-muted-foreground min-w-[60px]">{item.status}</span>
       )}
       <div className="flex-1 min-w-0">
-        <div className="text-zinc-800 dark:text-zinc-200">
+        <div className="text-foreground">
           <span className="font-mono">{when}</span>{' '}
-          <span className="text-zinc-500">· {summary}</span>
+          <span className="text-muted-foreground">· {summary}</span>
         </div>
-        <div className="text-[10px] text-zinc-500 mt-0.5 truncate">
+        <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
           <span className="italic">{item.recTitle}</span>
         </div>
         {item.lastError && (
-          <div className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 truncate">
+          <div className="text-[10px] text-amber-400 mt-0.5 truncate">
             {item.lastError}
           </div>
         )}
@@ -318,16 +318,16 @@ function IconButton({
 }) {
   const hoverClass =
     tone === 'red'
-      ? 'hover:text-red-600'
+      ? 'hover:text-primary'
       : tone === 'blue'
-      ? 'hover:text-blue-600'
+      ? 'hover:text-primary'
       : 'hover:text-amber-600';
   return (
     <button
       onClick={onClick}
       title={title}
       aria-label={title}
-      className={`text-zinc-400 ${hoverClass} p-1`}
+      className={`text-muted-foreground/70 ${hoverClass} p-1`}
     >
       {children}
     </button>

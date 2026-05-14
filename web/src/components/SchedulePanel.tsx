@@ -281,16 +281,16 @@ export function SchedulePanel({
   const totalQueued = onceForThisPiece.length + recurringForThisPiece.length;
 
   return (
-    <div className="border-t border-zinc-100 dark:border-zinc-900 bg-zinc-50/50 dark:bg-zinc-900/30 px-3 py-3 space-y-3">
+    <div className="border-t border-border/60 bg-zinc-50/50 dark:bg-zinc-900/30 px-3 py-3 space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-[10px] uppercase tracking-widest text-zinc-500 inline-flex items-center gap-1.5">
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground inline-flex items-center gap-1.5">
           <Clock size={12} />
           Schedule a send
         </p>
         <button
           onClick={onClose}
           disabled={submitting}
-          className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 disabled:opacity-50"
+          className="text-muted-foreground/70 hover:text-foreground  disabled:opacity-50"
           aria-label="Close"
         >
           <X size={14} />
@@ -324,7 +324,7 @@ export function SchedulePanel({
       </div>
 
       <label className="block">
-        <span className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">
+        <span className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1 block">
           SMS body (edit before scheduling — fix any [DATE+X] / placeholders)
         </span>
         <textarea
@@ -333,10 +333,10 @@ export function SchedulePanel({
           rows={Math.min(8, Math.max(3, editedBody.split('\n').length + 1))}
           maxLength={1000}
           disabled={submitting}
-          className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 placeholder:text-zinc-400 focus:outline-none focus:border-blue-600 font-sans resize-y"
+          className="w-full bg-card border border-border text-sm text-foreground px-3 py-2 placeholder:text-muted-foreground/70 focus:outline-none focus:border-blue-600 font-sans resize-y"
         />
         <div className="flex items-center justify-between mt-1">
-          <span className="text-[10px] text-zinc-500">
+          <span className="text-[10px] text-muted-foreground">
             {editedBody.length} chars
             {editedBody !== pieceContent && ' · edited (saved with this schedule)'}
           </span>
@@ -344,7 +344,7 @@ export function SchedulePanel({
             <button
               onClick={() => setEditedBody(pieceContent)}
               disabled={submitting}
-              className="text-[10px] text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+              className="text-[10px] text-muted-foreground hover:text-foreground"
             >
               Reset to original
             </button>
@@ -354,19 +354,19 @@ export function SchedulePanel({
 
       {recurrence === 'once' ? (
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase tracking-widest text-zinc-500">When</span>
+          <span className="text-[10px] uppercase tracking-widest text-muted-foreground">When</span>
           <input
             type="datetime-local"
             value={scheduledAtLocal}
             onChange={(e) => setScheduledAtLocal(e.target.value)}
             disabled={submitting}
-            className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 px-2 py-1.5 focus:outline-none focus:border-blue-600 font-mono text-[12px]"
+            className="bg-card border border-border text-foreground px-2 py-1.5 focus:outline-none focus:border-blue-600 font-mono text-[12px]"
           />
         </label>
       ) : (
         <div className="space-y-2">
           <div className="flex flex-col gap-1">
-            <span className="text-[10px] uppercase tracking-widest text-zinc-500">Day of week</span>
+            <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Day of week</span>
             <div className="flex flex-wrap gap-1">
               {DAY_LABELS.map((label, i) => (
                 <button
@@ -376,7 +376,7 @@ export function SchedulePanel({
                   className={`px-2 py-1 text-[11px] uppercase tracking-widest ${
                     dayOfWeek === i
                       ? 'bg-blue-600 text-white'
-                      : 'bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-blue-600'
+                      : 'bg-card border border-border text-foreground/90 hover:border-primary'
                   }`}
                 >
                   {label}
@@ -385,16 +385,16 @@ export function SchedulePanel({
             </div>
           </div>
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] uppercase tracking-widest text-zinc-500">Time of day</span>
+            <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Time of day</span>
             <input
               type="time"
               value={timeOfDay}
               onChange={(e) => setTimeOfDay(e.target.value)}
               disabled={submitting}
-              className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 px-2 py-1.5 focus:outline-none focus:border-blue-600 font-mono text-[12px] w-32"
+              className="bg-card border border-border text-foreground px-2 py-1.5 focus:outline-none focus:border-blue-600 font-mono text-[12px] w-32"
             />
           </label>
-          <p className="text-[10px] text-zinc-500">
+          <p className="text-[10px] text-muted-foreground">
             First fire:{' '}
             {(() => {
               const [hh, mm] = timeOfDay.split(':');
@@ -455,7 +455,7 @@ export function SchedulePanel({
       />
 
       <div className="flex items-center justify-between">
-        <p className="text-[10px] text-zinc-500">
+        <p className="text-[10px] text-muted-foreground">
           {recurrence === 'weekly'
             ? 'Fires every week while active. The draft must still be APPROVED at each fire time.'
             : 'Fires once. The draft must still be APPROVED at fire time.'}
@@ -463,7 +463,7 @@ export function SchedulePanel({
         <button
           onClick={() => (recurrence === 'once' ? void submitOnce() : void submitWeekly())}
           disabled={submitting}
-          className="bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-300 disabled:text-zinc-500 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
+          className="bg-primary hover:bg-accent disabled:bg-zinc-300 disabled:text-muted-foreground text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
         >
           {recurrence === 'weekly' ? <Repeat size={11} /> : <Clock size={11} />}
           {submitting ? 'Scheduling…' : recurrence === 'weekly' ? 'Schedule weekly' : 'Schedule once'}
@@ -471,14 +471,14 @@ export function SchedulePanel({
       </div>
 
       {error && (
-        <p className="text-[11px] text-red-600 dark:text-red-400 font-mono break-all">{error}</p>
+        <p className="text-[11px] text-destructive font-mono break-all">{error}</p>
       )}
 
       {totalQueued > 0 && (
-        <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800 space-y-2">
+        <div className="pt-2 border-t border-border space-y-2">
           {recurringForThisPiece.length > 0 && (
             <div>
-              <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
                 Recurring · {recurringForThisPiece.length}
               </p>
               <ul className="space-y-1.5">
@@ -496,7 +496,7 @@ export function SchedulePanel({
           )}
           {onceForThisPiece.length > 0 && (
             <div>
-              <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
                 One-off · {onceForThisPiece.length}
               </p>
               <ul className="space-y-1.5">
@@ -509,7 +509,7 @@ export function SchedulePanel({
         </div>
       )}
 
-      {loading && totalQueued === 0 && <p className="text-[11px] text-zinc-500">Loading queue…</p>}
+      {loading && totalQueued === 0 && <p className="text-[11px] text-muted-foreground">Loading queue…</p>}
     </div>
   );
 }
@@ -528,9 +528,9 @@ function TabButton({
   const activeClass =
     variant === 'solid'
       ? 'bg-blue-600 text-white'
-      : 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-600';
+      : 'bg-primary/15 text-primary border border-blue-600';
   const inactiveClass =
-    'bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:border-blue-600';
+    'bg-card border border-border text-muted-foreground hover:border-primary';
   return (
     <button
       onClick={onClick}
@@ -555,30 +555,30 @@ function ScheduledRow({ item, onCancel }: { item: ScheduledSendRow; onCancel: ()
         }`;
   const statusTone =
     item.status === 'PENDING'
-      ? 'text-zinc-600 dark:text-zinc-400'
+      ? 'text-muted-foreground'
       : item.status === 'COMPLETED'
-      ? 'text-emerald-600 dark:text-emerald-400'
+      ? 'text-emerald-400'
       : item.status === 'RUNNING'
-      ? 'text-blue-600 dark:text-blue-400'
+      ? 'text-primary'
       : item.status === 'CANCELED'
-      ? 'text-zinc-500'
-      : 'text-red-600 dark:text-red-400';
+      ? 'text-muted-foreground'
+      : 'text-destructive';
   return (
-    <li className="flex items-center gap-2 text-[11px] text-zinc-700 dark:text-zinc-300">
+    <li className="flex items-center gap-2 text-[11px] text-foreground/90">
       <span className={`uppercase tracking-widest text-[9px] ${statusTone} min-w-[60px]`}>
         {item.status}
       </span>
-      <span className="font-mono text-zinc-500">{when}</span>
-      <span className="text-zinc-500">{summary}</span>
+      <span className="font-mono text-muted-foreground">{when}</span>
+      <span className="text-muted-foreground">{summary}</span>
       {item.lastError && (
-        <span className="text-amber-600 dark:text-amber-400 truncate" title={item.lastError}>
+        <span className="text-amber-400 truncate" title={item.lastError}>
           · {item.lastError.slice(0, 40)}
         </span>
       )}
       {item.status === 'PENDING' && (
         <button
           onClick={onCancel}
-          className="ml-auto text-zinc-400 hover:text-red-600"
+          className="ml-auto text-muted-foreground/70 hover:text-primary"
           aria-label="Cancel"
         >
           <Trash2 size={11} />
@@ -612,23 +612,23 @@ function RecurringRow({
             : ''
         }`;
   const statusTone = item.active
-    ? 'text-blue-600 dark:text-blue-400'
-    : 'text-zinc-500';
+    ? 'text-primary'
+    : 'text-muted-foreground';
   return (
-    <li className="flex items-center gap-2 text-[11px] text-zinc-700 dark:text-zinc-300">
+    <li className="flex items-center gap-2 text-[11px] text-foreground/90">
       <span className={`uppercase tracking-widest text-[9px] ${statusTone} min-w-[60px]`}>
         {item.active ? 'ACTIVE' : 'PAUSED'}
       </span>
       <span className="font-mono">{cadence}</span>
-      <span className="text-zinc-500">{summary}</span>
-      <span className="text-[10px] text-zinc-500">
+      <span className="text-muted-foreground">{summary}</span>
+      <span className="text-[10px] text-muted-foreground">
         · next {next} · {item.runCount} run{item.runCount === 1 ? '' : 's'}
       </span>
       <div className="ml-auto flex items-center gap-1">
         {item.active && (
           <button
             onClick={onSkipNext}
-            className="text-zinc-400 hover:text-amber-600"
+            className="text-muted-foreground/70 hover:text-amber-600"
             aria-label="Skip next occurrence"
             title="Skip next occurrence (push nextFireAt forward by one cadence)"
           >
@@ -637,7 +637,7 @@ function RecurringRow({
         )}
         <button
           onClick={onToggle}
-          className="text-zinc-400 hover:text-blue-600"
+          className="text-muted-foreground/70 hover:text-primary"
           aria-label={item.active ? 'Pause' : 'Resume'}
           title={item.active ? 'Pause' : 'Resume'}
         >
@@ -645,7 +645,7 @@ function RecurringRow({
         </button>
         <button
           onClick={onDelete}
-          className="text-zinc-400 hover:text-red-600"
+          className="text-muted-foreground/70 hover:text-primary"
           aria-label="Delete"
           title="Delete"
         >
@@ -671,13 +671,13 @@ function FilterInput({
 }) {
   return (
     <label className="flex flex-col gap-1 text-[11px]">
-      <span className="text-[10px] uppercase tracking-widest text-zinc-500">{label}</span>
+      <span className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</span>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         disabled={disabled}
-        className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 px-2 py-1.5 placeholder:text-zinc-400 focus:outline-none focus:border-blue-600 font-mono text-[12px]"
+        className="bg-card border border-border text-foreground px-2 py-1.5 placeholder:text-muted-foreground/70 focus:outline-none focus:border-blue-600 font-mono text-[12px]"
       />
     </label>
   );

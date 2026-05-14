@@ -95,10 +95,10 @@ export function DraftView({
   }
 
   return (
-    <div className="border border-red-300 dark:border-red-900 bg-red-50/40 dark:bg-red-950/20 p-5 mt-3 space-y-5">
+    <div className="border border-primary/40 bg-primary/5 p-5 mt-3 space-y-5">
       <header>
         <div className="flex items-baseline justify-between gap-2 flex-wrap">
-          <h6 className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2 flex-wrap">
+          <h6 className="font-semibold text-foreground flex items-center gap-2 flex-wrap">
             <span>Campaign draft · {payload.title}</span>
             {(() => {
               const style = STATUS_STYLES[draft.status] ?? STATUS_STYLES.PENDING_REVIEW;
@@ -111,33 +111,33 @@ export function DraftView({
               );
             })()}
             {draft.versionCount > 1 && (
-              <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-normal">
+              <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-normal">
                 v{draft.version} of {draft.versionCount}
               </span>
             )}
           </h6>
-          <span className="text-[10px] uppercase tracking-widest text-zinc-500">
+          <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
             {new Date(draft.createdAt).toLocaleString()}
           </span>
         </div>
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
-          <span className="px-2 py-0.5 bg-zinc-200 dark:bg-zinc-800 uppercase tracking-wider text-[10px]">
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span className="px-2 py-0.5 bg-muted uppercase tracking-wider text-[10px]">
             {payload.campaignType.replace(/-/g, ' ')}
           </span>
           {(payload.channels ?? []).map((c) => (
             <span
               key={c}
-              className="px-2 py-0.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-[10px] uppercase tracking-wider"
+              className="px-2 py-0.5 bg-white dark:bg-zinc-900 border border-border text-[10px] uppercase tracking-wider"
             >
               {channelLabel(c)}
             </span>
           ))}
-          <span className="text-zinc-500">·</span>
+          <span className="text-muted-foreground">·</span>
           <span>{payload.launchTimeline}</span>
         </div>
         {draft.feedback && (
-          <p className="mt-3 text-xs text-zinc-600 dark:text-zinc-400 border-l-2 border-red-300 dark:border-red-800 pl-3">
-            <span className="font-medium text-zinc-500 uppercase tracking-wider text-[10px] mr-2">
+          <p className="mt-3 text-xs text-muted-foreground border-l-2 border-primary/40 pl-3">
+            <span className="font-medium text-muted-foreground uppercase tracking-wider text-[10px] mr-2">
               Refined with feedback
             </span>
             <span className="italic">&ldquo;{draft.feedback}&rdquo;</span>
@@ -146,7 +146,7 @@ export function DraftView({
       </header>
 
       <section>
-        <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
           Pieces · ready to paste
         </p>
         <div className="space-y-3">
@@ -173,18 +173,18 @@ export function DraftView({
 
       {(payload.budgetBdt != null || payload.budgetBreakdown) && (
         <section>
-          <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">Budget</p>
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">Budget</p>
           {payload.budgetBdt != null && (
-            <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200 mb-2">
+            <p className="text-sm font-medium text-foreground mb-2">
               ৳{payload.budgetBdt.toLocaleString()}
             </p>
           )}
           {payload.budgetBreakdown && payload.budgetBreakdown.length > 0 && (
             <ul className="text-sm space-y-1">
               {payload.budgetBreakdown.map((b, i) => (
-                <li key={i} className="flex justify-between text-zinc-700 dark:text-zinc-300">
+                <li key={i} className="flex justify-between text-foreground/90">
                   <span>{b.item}</span>
-                  <span className="text-zinc-500 font-mono">
+                  <span className="text-muted-foreground font-mono">
                     ৳{b.amountBdt.toLocaleString()}
                   </span>
                 </li>
@@ -195,11 +195,11 @@ export function DraftView({
       )}
 
       <section>
-        <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">KPIs to watch</p>
-        <ul className="space-y-1.5 text-sm text-zinc-700 dark:text-zinc-300">
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">KPIs to watch</p>
+        <ul className="space-y-1.5 text-sm text-foreground/90">
           {(payload.kpis ?? []).map((k, i) => (
             <li key={i} className="flex gap-2">
-              <span className="text-red-600 mt-0.5">●</span>
+              <span className="text-primary mt-0.5">●</span>
               <span>{k}</span>
             </li>
           ))}
@@ -207,10 +207,10 @@ export function DraftView({
       </section>
 
       <section>
-        <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
           Execution checklist
         </p>
-        <ol className="space-y-1.5 text-sm text-zinc-700 dark:text-zinc-300 list-decimal pl-5">
+        <ol className="space-y-1.5 text-sm text-foreground/90 list-decimal pl-5">
           {(payload.executionChecklist ?? []).map((c, i) => (
             <li key={i}>{c}</li>
           ))}
@@ -218,11 +218,11 @@ export function DraftView({
       </section>
 
       {(payload.warnings?.length ?? 0) > 0 && (
-        <section className="border-t border-zinc-200 dark:border-zinc-800 pt-3">
-          <p className="text-[10px] uppercase tracking-widest text-amber-600 dark:text-amber-500 mb-2">
+        <section className="border-t border-border pt-3">
+          <p className="text-[10px] uppercase tracking-widest text-amber-400 mb-2">
             Watch out
           </p>
-          <ul className="space-y-1 text-xs text-amber-700 dark:text-amber-400">
+          <ul className="space-y-1 text-xs text-amber-300">
             {(payload.warnings ?? []).map((w, i) => (
               <li key={i} className="flex gap-2">
                 <span>⚠</span>
@@ -233,11 +233,11 @@ export function DraftView({
         </section>
       )}
 
-      <footer className="border-t border-zinc-200 dark:border-zinc-800 pt-3">
+      <footer className="border-t border-border pt-3">
         {showRefineForm ? (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <p className="text-[10px] uppercase tracking-widest text-zinc-500">
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
                 Refine this draft
               </p>
               <button
@@ -245,7 +245,7 @@ export function DraftView({
                   setShowRefineForm(false);
                   setFeedback('');
                 }}
-                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                className="text-muted-foreground/70 hover:text-foreground "
                 aria-label="Cancel"
               >
                 <X size={14} />
@@ -259,19 +259,19 @@ export function DraftView({
               maxLength={2000}
               autoFocus
               disabled={isRefining}
-              className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 placeholder:text-zinc-400 focus:outline-none focus:border-red-600 resize-y"
+              className="w-full bg-card border border-border text-sm text-foreground px-3 py-2 placeholder:text-muted-foreground/70 focus:outline-none focus:border-primary resize-y"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submitRefine();
               }}
             />
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-zinc-500">
+              <span className="text-[10px] text-muted-foreground">
                 ⌘/Ctrl + Enter to submit · {feedback.length}/2000
               </span>
               <button
                 onClick={submitRefine}
                 disabled={isRefining || feedback.trim().length < 4}
-                className="bg-red-600 hover:bg-red-700 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
+                className="bg-primary hover:bg-accent disabled:bg-zinc-300 disabled:text-muted-foreground dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
               >
                 <Sparkles size={11} />
                 {isRefining ? 'Refining…' : 'Refine draft'}
@@ -283,7 +283,7 @@ export function DraftView({
             <button
               onClick={() => setShowRefineForm(true)}
               disabled={isRefining || isUpdatingStatus}
-              className="text-[10px] tracking-widest uppercase text-red-600 hover:text-red-700 disabled:text-zinc-400 inline-flex items-center gap-1 mr-auto"
+              className="text-[10px] tracking-widest uppercase text-primary hover:text-accent disabled:text-muted-foreground/70 inline-flex items-center gap-1 mr-auto"
             >
               <Sparkles size={11} />
               {isRefining ? 'Refining…' : 'Refine with feedback'}
@@ -294,7 +294,7 @@ export function DraftView({
                 <button
                   onClick={() => onSetStatus('REJECTED')}
                   disabled={isUpdatingStatus || isRefining}
-                  className="text-[10px] tracking-widest uppercase text-zinc-600 dark:text-zinc-400 hover:text-amber-600 disabled:text-zinc-400 inline-flex items-center gap-1 px-2 py-1 border border-zinc-200 dark:border-zinc-800 hover:border-amber-600"
+                  className="text-[10px] tracking-widest uppercase text-muted-foreground hover:text-amber-600 disabled:text-muted-foreground/70 inline-flex items-center gap-1 px-2 py-1 border border-border hover:border-amber-600"
                 >
                   <X size={11} />
                   Reject
@@ -302,7 +302,7 @@ export function DraftView({
                 <button
                   onClick={() => onSetStatus('APPROVED')}
                   disabled={isUpdatingStatus || isRefining}
-                  className="text-[10px] tracking-widest uppercase text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-300 disabled:text-zinc-500 inline-flex items-center gap-1 px-2 py-1"
+                  className="text-[10px] tracking-widest uppercase text-white bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-300 disabled:text-muted-foreground inline-flex items-center gap-1 px-2 py-1"
                 >
                   <Check size={11} />
                   {isUpdatingStatus ? 'Saving…' : 'Approve'}
@@ -312,7 +312,7 @@ export function DraftView({
               <button
                 onClick={() => onSetStatus('PENDING_REVIEW')}
                 disabled={isUpdatingStatus || isRefining}
-                className="text-[10px] tracking-widest uppercase text-zinc-600 dark:text-zinc-400 hover:text-red-600 disabled:text-zinc-400 inline-flex items-center gap-1 px-2 py-1 border border-zinc-200 dark:border-zinc-800 hover:border-red-600"
+                className="text-[10px] tracking-widest uppercase text-muted-foreground hover:text-primary disabled:text-muted-foreground/70 inline-flex items-center gap-1 px-2 py-1 border border-border hover:border-primary"
               >
                 <RotateCcw size={11} />
                 {isUpdatingStatus ? 'Saving…' : 'Re-open'}
@@ -500,16 +500,16 @@ function PieceCard({
 
   return (
     <div
-      className={`border ${isComplete ? 'border-emerald-300 dark:border-emerald-900' : 'border-zinc-200 dark:border-zinc-800'} bg-white dark:bg-zinc-950`}
+      className={`border ${isComplete ? 'border-emerald-900/60' : 'border-border'} bg-card`}
     >
       <header
-        className={`flex items-center justify-between gap-2 px-3 py-2 border-b border-zinc-100 dark:border-zinc-900 ${isComplete ? 'bg-emerald-50 dark:bg-emerald-950/30' : 'bg-zinc-50 dark:bg-zinc-900'}`}
+        className={`flex items-center justify-between gap-2 px-3 py-2 border-b border-border/60 ${isComplete ? 'bg-emerald-950/30' : 'bg-secondary'}`}
       >
         <div className="flex items-center gap-2 text-[11px]">
           <button
             onClick={onCirclePress}
             disabled={isTogglingCompletion || showCompletionForm}
-            className={`inline-flex items-center justify-center ${isComplete ? 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700' : 'text-zinc-400 hover:text-emerald-600'} disabled:opacity-50`}
+            className={`inline-flex items-center justify-center ${isComplete ? 'text-emerald-400 hover:text-emerald-700' : 'text-muted-foreground/70 hover:text-emerald-600'} disabled:opacity-50`}
             title={
               isComplete
                 ? completion?.source === 'integrated-sms-send'
@@ -524,17 +524,17 @@ function PieceCard({
           >
             {isComplete ? <CheckCircle2 size={14} /> : <Circle size={14} />}
           </button>
-          <span className="px-1.5 py-0.5 bg-zinc-200 dark:bg-zinc-800 uppercase tracking-wider text-[10px] text-zinc-700 dark:text-zinc-300">
+          <span className="px-1.5 py-0.5 bg-muted uppercase tracking-wider text-[10px] text-foreground/90">
             {ASSET_TYPE_LABEL[piece.assetType]}
           </span>
-          <span className="text-zinc-500">{channelLabel(piece.channel)}</span>
-          <span className="text-zinc-600 dark:text-zinc-400">· {localPiece.title}</span>
+          <span className="text-muted-foreground">{channelLabel(piece.channel)}</span>
+          <span className="text-muted-foreground">· {localPiece.title}</span>
         </div>
         <div className="flex items-center gap-1">
           {!isBrief && (
             <button
               onClick={copy}
-              className="inline-flex items-center gap-1 text-[10px] text-zinc-600 dark:text-zinc-400 hover:text-red-600 px-2 py-0.5 border border-zinc-200 dark:border-zinc-800"
+              className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary px-2 py-0.5 border border-border"
             >
               <Copy size={11} />
               {copied ? 'Copied' : 'Copy'}
@@ -543,7 +543,7 @@ function PieceCard({
           {!showEditForm && (
             <button
               onClick={openEditPiece}
-              className="inline-flex items-center gap-1 text-[10px] text-zinc-600 dark:text-zinc-400 hover:text-red-600 px-2 py-0.5 border border-zinc-200 dark:border-zinc-800"
+              className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary px-2 py-0.5 border border-border"
               title="Edit this piece in place (typo fix, tweak copy) without re-running Claude"
             >
               <Pencil size={11} />
@@ -555,7 +555,7 @@ function PieceCard({
               <button
                 onClick={() => setShowSendForm(true)}
                 disabled={isSendingSms}
-                className="inline-flex items-center gap-1 text-[10px] text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-300 disabled:text-zinc-500 px-2 py-0.5"
+                className="inline-flex items-center gap-1 text-[10px] text-white bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-300 disabled:text-muted-foreground px-2 py-0.5"
                 title="Send to one phone — test send"
               >
                 <Send size={11} />
@@ -563,7 +563,7 @@ function PieceCard({
               </button>
               <button
                 onClick={() => setShowBlastForm(true)}
-                className="inline-flex items-center gap-1 text-[10px] text-white bg-emerald-700 hover:bg-emerald-800 px-2 py-0.5"
+                className="inline-flex items-center gap-1 text-[10px] text-white bg-emerald-700 hover:bg-emerald-600 px-2 py-0.5"
                 title="Send to every customer matching a segment filter"
               >
                 <Users size={11} />
@@ -571,7 +571,7 @@ function PieceCard({
               </button>
               <button
                 onClick={() => setShowScheduleForm(true)}
-                className="inline-flex items-center gap-1 text-[10px] text-white bg-blue-600 hover:bg-blue-700 px-2 py-0.5"
+                className="inline-flex items-center gap-1 text-[10px] text-white bg-primary hover:bg-accent px-2 py-0.5"
                 title="Schedule a send for later"
               >
                 <Clock size={11} />
@@ -582,7 +582,7 @@ function PieceCard({
           {showFacebookControls && !showFacebookForm && (
             <button
               onClick={() => setShowFacebookForm(true)}
-              className="inline-flex items-center gap-1 text-[10px] text-white bg-blue-600 hover:bg-blue-700 px-2 py-0.5"
+              className="inline-flex items-center gap-1 text-[10px] text-white bg-primary hover:bg-accent px-2 py-0.5"
               title="Publish this piece to a connected Facebook page"
             >
               <FacebookIcon size={11} />
@@ -592,20 +592,20 @@ function PieceCard({
         </div>
       </header>
 
-      <pre className="px-3 py-3 text-sm text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap font-sans leading-relaxed">
+      <pre className="px-3 py-3 text-sm text-foreground whitespace-pre-wrap font-sans leading-relaxed">
         {localPiece.content}
       </pre>
 
       {localPiece.notes && !showEditForm && (
-        <p className="px-3 pb-3 text-[11px] text-zinc-500 border-t border-zinc-100 dark:border-zinc-900 pt-2">
+        <p className="px-3 pb-3 text-[11px] text-muted-foreground border-t border-border/60 pt-2">
           {localPiece.notes}
         </p>
       )}
 
       {showEditForm && (
-        <div className="border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/30 px-3 py-3 space-y-2">
+        <div className="border-t border-border bg-secondary/40 px-3 py-3 space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-[10px] uppercase tracking-widest text-zinc-500">
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
               Edit piece in place — no Claude refine
             </p>
             <button
@@ -613,36 +613,36 @@ function PieceCard({
                 setShowEditForm(false);
                 setEditError(null);
               }}
-              className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+              className="text-muted-foreground/70 hover:text-foreground "
               aria-label="Cancel"
             >
               <X size={14} />
             </button>
           </div>
           <label className="block">
-            <span className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">Title</span>
+            <span className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1 block">Title</span>
             <input
               value={editTitle}
               onChange={(e) => setEditTitle(e.target.value)}
               disabled={savingEdit}
               maxLength={200}
-              className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 focus:outline-none focus:border-red-600"
+              className="w-full bg-card border border-border text-sm text-foreground px-3 py-2 focus:outline-none focus:border-primary"
             />
           </label>
           <label className="block">
-            <span className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">Body</span>
+            <span className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1 block">Body</span>
             <textarea
               value={editContent}
               onChange={(e) => setEditContent(e.target.value)}
               disabled={savingEdit}
               rows={Math.min(14, Math.max(4, editContent.split('\n').length + 1))}
               maxLength={60000}
-              className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 focus:outline-none focus:border-red-600 resize-y font-sans"
+              className="w-full bg-card border border-border text-sm text-foreground px-3 py-2 focus:outline-none focus:border-primary resize-y font-sans"
             />
-            <div className="text-[10px] text-zinc-500 mt-1">{editContent.length} chars</div>
+            <div className="text-[10px] text-muted-foreground mt-1">{editContent.length} chars</div>
           </label>
           <label className="block">
-            <span className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">
+            <span className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1 block">
               Notes (internal — what kind of asset is needed, target audience, etc.)
             </span>
             <textarea
@@ -651,20 +651,20 @@ function PieceCard({
               disabled={savingEdit}
               rows={2}
               maxLength={2000}
-              className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 focus:outline-none focus:border-red-600 resize-y"
+              className="w-full bg-card border border-border text-sm text-foreground px-3 py-2 focus:outline-none focus:border-primary resize-y"
             />
           </label>
           {editError && (
-            <p className="text-xs text-red-600 dark:text-red-400 font-mono break-all">{editError}</p>
+            <p className="text-xs text-destructive font-mono break-all">{editError}</p>
           )}
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-zinc-500">
+            <span className="text-[10px] text-muted-foreground">
               Historical sends keep the body they were sent with; new sends use the edited version.
             </span>
             <button
               onClick={savePieceEdit}
               disabled={savingEdit || editContent.trim().length === 0}
-              className="bg-red-600 hover:bg-red-700 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
+              className="bg-primary hover:bg-accent disabled:bg-zinc-300 disabled:text-muted-foreground dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
             >
               <Save size={11} />
               {savingEdit ? 'Saving…' : 'Save edits'}
@@ -674,9 +674,9 @@ function PieceCard({
       )}
 
       {isComplete && completion && !showCompletionForm && (
-        <div className="border-t border-emerald-100 dark:border-emerald-950 bg-emerald-50/40 dark:bg-emerald-950/20 px-3 py-2 text-[11px]">
+        <div className="border-t border-emerald-950 bg-emerald-950/20 px-3 py-2 text-[11px]">
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <span className="text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1">
+            <span className="text-emerald-400 inline-flex items-center gap-1">
               <CheckCircle2 size={11} />
               <span className="font-medium">
                 {completion.source === 'integrated-sms-send'
@@ -687,20 +687,20 @@ function PieceCard({
                   ? 'Posted to Facebook'
                   : 'Marked done'}
               </span>
-              <span className="text-zinc-500">
+              <span className="text-muted-foreground">
                 · {new Date(completion.completedAt).toLocaleString()}
               </span>
             </span>
             <button
               onClick={openEditNotes}
               disabled={isTogglingCompletion}
-              className="text-[10px] uppercase tracking-widest text-zinc-600 dark:text-zinc-400 hover:text-emerald-600 disabled:opacity-50"
+              className="text-[10px] uppercase tracking-widest text-muted-foreground hover:text-emerald-600 disabled:opacity-50"
             >
               {completion.notes ? 'Edit note' : '+ Add note'}
             </button>
           </div>
           {completion.notes && (
-            <p className="mt-1.5 text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-words">
+            <p className="mt-1.5 text-foreground/90 whitespace-pre-wrap break-words">
               {completion.notes}
             </p>
           )}
@@ -708,9 +708,9 @@ function PieceCard({
       )}
 
       {showCompletionForm && (
-        <div className="border-t border-emerald-100 dark:border-emerald-950 bg-emerald-50/40 dark:bg-emerald-950/20 px-3 py-3 space-y-2">
+        <div className="border-t border-emerald-950 bg-emerald-950/20 px-3 py-3 space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-[10px] uppercase tracking-widest text-zinc-500">
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
               {isComplete ? 'Edit completion note' : 'Mark done — how did you do it? (optional)'}
             </p>
             <button
@@ -718,7 +718,7 @@ function PieceCard({
                 setShowCompletionForm(false);
                 setCompletionNotes('');
               }}
-              className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+              className="text-muted-foreground/70 hover:text-foreground "
               aria-label="Cancel"
             >
               <X size={14} />
@@ -736,7 +736,7 @@ function PieceCard({
             maxLength={500}
             autoFocus
             disabled={isTogglingCompletion}
-            className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 placeholder:text-zinc-400 focus:outline-none focus:border-emerald-600 resize-y"
+            className="w-full bg-card border border-border text-sm text-foreground px-3 py-2 placeholder:text-muted-foreground/70 focus:outline-none focus:border-emerald-600 resize-y"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                 isComplete ? saveEditedNotes() : submitCompletion();
@@ -744,13 +744,13 @@ function PieceCard({
             }}
           />
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-zinc-500">
+            <span className="text-[10px] text-muted-foreground">
               ⌘/Ctrl + Enter · {completionNotes.length}/500
             </span>
             <button
               onClick={isComplete ? saveEditedNotes : submitCompletion}
               disabled={isTogglingCompletion}
-              className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
+              className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-300 disabled:text-muted-foreground dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
             >
               <Check size={11} />
               {isTogglingCompletion
@@ -764,9 +764,9 @@ function PieceCard({
       )}
 
       {showSmsControls && showSendForm && (
-        <div className="border-t border-zinc-100 dark:border-zinc-900 bg-zinc-50/50 dark:bg-zinc-900/30 px-3 py-3 space-y-2">
+        <div className="border-t border-border/60 bg-zinc-50/50 dark:bg-zinc-900/30 px-3 py-3 space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-[10px] uppercase tracking-widest text-zinc-500">
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
               Send this SMS via Restora
             </p>
             <button
@@ -775,14 +775,14 @@ function PieceCard({
                 setPhone('');
                 setEditedBody(localPiece.content);
               }}
-              className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+              className="text-muted-foreground/70 hover:text-foreground "
               aria-label="Cancel"
             >
               <X size={14} />
             </button>
           </div>
           <label className="block">
-            <span className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">
+            <span className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1 block">
               SMS body (edit before sending — fix any [DATE+X] / placeholders)
             </span>
             <textarea
@@ -791,17 +791,17 @@ function PieceCard({
               rows={Math.min(8, Math.max(3, editedBody.split('\n').length + 1))}
               maxLength={1000}
               disabled={isSendingSms}
-              className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 placeholder:text-zinc-400 focus:outline-none focus:border-emerald-600 font-sans resize-y"
+              className="w-full bg-card border border-border text-sm text-foreground px-3 py-2 placeholder:text-muted-foreground/70 focus:outline-none focus:border-emerald-600 font-sans resize-y"
             />
             <div className="flex items-center justify-between mt-1">
-              <span className="text-[10px] text-zinc-500">
+              <span className="text-[10px] text-muted-foreground">
                 {editedBody.length} chars
                 {editedBody !== localPiece.content && ' · edited'}
               </span>
               {editedBody !== localPiece.content && (
                 <button
                   onClick={() => setEditedBody(localPiece.content)}
-                  className="text-[10px] text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                  className="text-[10px] text-muted-foreground hover:text-foreground"
                 >
                   Reset to original
                 </button>
@@ -816,16 +816,16 @@ function PieceCard({
             onKeyDown={(e) => {
               if (e.key === 'Enter') submitSend();
             }}
-            className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 placeholder:text-zinc-400 focus:outline-none focus:border-emerald-600 font-mono"
+            className="w-full bg-card border border-border text-sm text-foreground px-3 py-2 placeholder:text-muted-foreground/70 focus:outline-none focus:border-emerald-600 font-mono"
           />
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-zinc-500">
+            <span className="text-[10px] text-muted-foreground">
               Sends through your Restora SMS provider · Enter to confirm
             </span>
             <button
               onClick={submitSend}
               disabled={isSendingSms || phone.trim().length < 6 || editedBody.trim().length === 0}
-              className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
+              className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-300 disabled:text-muted-foreground dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
             >
               <Send size={11} />
               {isSendingSms ? 'Sending…' : 'Send SMS'}
@@ -873,8 +873,8 @@ function PieceCard({
 function SendResultLine({ result }: { result: SmsSendRow }) {
   const isSuccess = result.status === 'SENT';
   const styles = isSuccess
-    ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900'
-    : 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900';
+    ? 'text-emerald-400 bg-emerald-950/30 border-emerald-900/60'
+    : 'text-amber-300 bg-amber-950/30 border-amber-900/60';
   return (
     <div className={`border-t px-3 py-2 text-[11px] font-mono ${styles}`}>
       <span className="font-medium">
@@ -882,12 +882,12 @@ function SendResultLine({ result }: { result: SmsSendRow }) {
       </span>{' '}
       to <span>{result.toPhone}</span>
       {result.providerRequestId && (
-        <span className="text-zinc-500"> · req {result.providerRequestId}</span>
+        <span className="text-muted-foreground"> · req {result.providerRequestId}</span>
       )}
       {result.error && (
         <span className="block mt-1 break-all whitespace-pre-wrap">{result.error}</span>
       )}
-      <span className="text-zinc-500 ml-2">
+      <span className="text-muted-foreground ml-2">
         {new Date(result.createdAt).toLocaleTimeString()}
       </span>
     </div>

@@ -51,12 +51,12 @@ try {
   Copy-Item -Path (Join-Path $webRoot 'public') -Destination (Join-Path $standaloneWeb 'public') -Recurse -Force
   Copy-Item -Path (Join-Path $webRoot 'prisma') -Destination (Join-Path $standaloneWeb 'prisma') -Recurse -Force
 
-  # Strip the Windows Prisma query engine — we only need the Linux
+  # Strip the Windows Prisma query engine -- we only need the Linux
   # binary on the droplet. Saves ~21 MB and trims a binary that won't
   # run on Ubuntu anyway.
   Get-ChildItem -Path $standaloneWeb -Recurse -Filter 'query_engine-windows*' -ErrorAction SilentlyContinue |
     Remove-Item -Force -ErrorAction SilentlyContinue
-  # Also drop the WASM engine — server-side runtime uses the native
+  # Also drop the WASM engine -- server-side runtime uses the native
   # .so.node binary, the wasm variant is only for edge/wasm runtimes.
   Get-ChildItem -Path $standaloneWeb -Recurse -Filter 'query_engine_bg*' -ErrorAction SilentlyContinue |
     Remove-Item -Force -ErrorAction SilentlyContinue
@@ -74,14 +74,23 @@ try {
     param([string]$Workdir, [string]$Tarball)
     Push-Location $Workdir
     try {
-      for ($attempt = 1; $attempt -le 3; $attempt++) {
+      for ($attempt = 1; $attempt -le 5; $attempt++) {
         if (Test-Path $Tarball) { Remove-Item $Tarball -Force }
-        & tar -czf $Tarball .
-        if ($LASTEXITCODE -eq 0) { return }
-        Write-Warning "tar attempt $attempt failed with exit $LASTEXITCODE; retrying in $($attempt)s"
+        # Capture stderr so we can see WHICH file tar bails on. Exit 2
+        # = "warning, some files vanished mid-read"; usually Windows
+        # holding a handle on something the build just touched.
+        $stderrFile = Join-Path $env:TEMP "mai-tar-err-$attempt.txt"
+        & tar -czf $Tarball . 2> $stderrFile
+        if ($LASTEXITCODE -eq 0) {
+          Remove-Item $stderrFile -Force -ErrorAction SilentlyContinue
+          return
+        }
+        $errs = if (Test-Path $stderrFile) { Get-Content $stderrFile -Raw } else { '' }
+        $head = if ($errs.Length -gt 400) { $errs.Substring(0, 400) } else { $errs }
+        Write-Warning "tar attempt $attempt exit $LASTEXITCODE -- stderr: $head"
         Start-Sleep -Seconds $attempt
       }
-      throw "tar failed after 3 attempts (exit $LASTEXITCODE)"
+      throw "tar failed after 5 attempts (exit $LASTEXITCODE) -- see /tmp stderr files"
     } finally { Pop-Location }
   }
 
@@ -151,7 +160,7 @@ df -h /
   & $python $ssh exec 'bash /root/mai-remote-deploy.sh'
   if ($LASTEXITCODE -ne 0) { throw "remote deploy failed ($LASTEXITCODE)" }
 
-  Write-Host '=== done — http://ai.eatrobd.com/ ===' -ForegroundColor Green
+  Write-Host '=== done -- http://ai.eatrobd.com/ ===' -ForegroundColor Green
 } finally {
   Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
 }

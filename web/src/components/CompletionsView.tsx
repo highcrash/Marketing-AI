@@ -19,22 +19,22 @@ type IconComp = React.ComponentType<{ size?: number; className?: string }>;
 const SOURCE_BADGE: Record<string, { label: string; className: string; Icon: IconComp }> = {
   manual: {
     label: 'Manual',
-    className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+    className: 'bg-emerald-950/40 text-emerald-300',
     Icon: CheckCircle2,
   },
   'integrated-sms-send': {
     label: 'SMS test',
-    className: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+    className: 'bg-primary/15 text-primary',
     Icon: Send,
   },
   'integrated-sms-blast': {
     label: 'SMS blast',
-    className: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+    className: 'bg-primary/15 text-primary',
     Icon: Users,
   },
   'integrated-facebook-post': {
     label: 'FB post',
-    className: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+    className: 'bg-primary/15 text-primary',
     Icon: FacebookIcon,
   },
 };
@@ -104,7 +104,7 @@ export function CompletionsView() {
 
   return (
     <div className="space-y-5">
-      <section className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-4">
+      <section className="border border-border bg-card p-4">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
           <Stat label="Total" value={counts.total} />
           <Stat label="Marked manually" value={counts.manual} hint="done outside the platform" />
@@ -113,21 +113,21 @@ export function CompletionsView() {
         </div>
       </section>
 
-      <section className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
-        <header className="flex items-center justify-between gap-2 px-4 py-3 border-b border-zinc-100 dark:border-zinc-900">
-          <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-600 dark:text-zinc-400">
+      <section className="border border-border bg-card">
+        <header className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border/60">
+          <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
             Completed pieces
           </h2>
           <div className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest">
-            <Filter size={11} className="text-zinc-400" />
+            <Filter size={11} className="text-muted-foreground/70" />
             {(['all', 'manual', 'integrated'] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setSourceFilter(f)}
                 className={`px-2 py-1 ${
                   sourceFilter === f
-                    ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900'
-                    : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
+                    ? 'bg-foreground text-background'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 {f}
@@ -137,19 +137,19 @@ export function CompletionsView() {
         </header>
 
         {loading ? (
-          <p className="px-4 py-6 text-xs text-zinc-500">Loading…</p>
+          <p className="px-4 py-6 text-xs text-muted-foreground">Loading…</p>
         ) : error ? (
-          <p className="px-4 py-6 text-xs text-red-600 dark:text-red-400 font-mono break-all">
+          <p className="px-4 py-6 text-xs text-destructive font-mono break-all">
             {error}
           </p>
         ) : filtered.length === 0 ? (
-          <p className="px-4 py-6 text-xs text-zinc-500">
+          <p className="px-4 py-6 text-xs text-muted-foreground">
             {items.length === 0
               ? 'Nothing marked done yet. Tick the checkbox on any draft piece — or send an SMS through the platform — and it shows up here.'
               : 'No completions match that filter.'}
           </p>
         ) : (
-          <ul className="divide-y divide-zinc-100 dark:divide-zinc-900">
+          <ul className="divide-y divide-border">
             {filtered.map((c) => {
               const badge = SOURCE_BADGE[c.source] ?? SOURCE_BADGE.manual;
               const Icon = badge.Icon;
@@ -157,20 +157,20 @@ export function CompletionsView() {
                 <li key={c.id} className="px-4 py-3 text-sm">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div className="flex items-start gap-2 min-w-0 flex-1">
-                      <Icon size={14} className="text-emerald-600 dark:text-emerald-400 mt-0.5 flex-shrink-0" />
+                      <Icon size={14} className="text-emerald-400 mt-0.5 flex-shrink-0" />
                       <div className="min-w-0">
-                        <div className="font-medium text-zinc-800 dark:text-zinc-200 truncate">
+                        <div className="font-medium text-foreground truncate">
                           {c.pieceTitle}
                         </div>
-                        <div className="text-[11px] text-zinc-500 mt-0.5 flex flex-wrap items-center gap-1">
-                          <span className="px-1.5 py-0.5 bg-zinc-100 dark:bg-zinc-900 uppercase tracking-wider text-[10px] text-zinc-600 dark:text-zinc-400">
+                        <div className="text-[11px] text-muted-foreground mt-0.5 flex flex-wrap items-center gap-1">
+                          <span className="px-1.5 py-0.5 bg-muted uppercase tracking-wider text-[10px] text-muted-foreground">
                             {assetLabel(c.pieceAssetType)}
                           </span>
                           {c.pieceChannel && <span>· {c.pieceChannel}</span>}
                           <span>·</span>
                           <Link
                             href={`/?analysis=${encodeURIComponent(c.analysisId)}#rec-${c.recIndex}`}
-                            className="text-zinc-600 dark:text-zinc-300 hover:text-red-600 italic"
+                            className="text-foreground/80 hover:text-primary italic"
                           >
                             {c.recTitle}
                           </Link>
@@ -183,13 +183,13 @@ export function CompletionsView() {
                       >
                         {badge.label}
                       </span>
-                      <div className="text-[10px] text-zinc-500 mt-1">
+                      <div className="text-[10px] text-muted-foreground mt-1">
                         {new Date(c.completedAt).toLocaleString()}
                       </div>
                     </div>
                   </div>
                   {c.notes && (
-                    <p className="mt-2 pl-6 text-[12px] text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-words border-l-2 border-emerald-200 dark:border-emerald-900 ml-1 pl-3 py-0.5">
+                    <p className="mt-2 pl-6 text-[12px] text-foreground/90 whitespace-pre-wrap break-words border-l-2 border-emerald-900/60 ml-1 pl-3 py-0.5">
                       {c.notes}
                     </p>
                   )}
@@ -206,9 +206,9 @@ export function CompletionsView() {
 function Stat({ label, value, hint }: { label: string; value: number; hint?: string }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-widest text-zinc-500">{label}</div>
-      <div className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">{value}</div>
-      {hint && <div className="text-[10px] text-zinc-400">{hint}</div>}
+      <div className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</div>
+      <div className="text-lg font-semibold text-foreground">{value}</div>
+      {hint && <div className="text-[10px] text-muted-foreground/70">{hint}</div>}
     </div>
   );
 }

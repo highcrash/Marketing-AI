@@ -347,15 +347,15 @@ export function FacebookPostPanel({
   }
 
   return (
-    <div className="border-t border-blue-100 dark:border-blue-950 bg-blue-50/40 dark:bg-blue-950/20 px-3 py-3 space-y-2">
+    <div className="border-t border-primary/30 bg-primary/5 px-3 py-3 space-y-2">
       <div className="flex items-center justify-between">
-        <p className="text-[10px] uppercase tracking-widest text-zinc-500 flex items-center gap-1">
-          <FacebookIcon size={11} className="text-blue-600" />
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground flex items-center gap-1">
+          <FacebookIcon size={11} className="text-primary" />
           Post to Facebook
         </p>
         <button
           onClick={onClose}
-          className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+          className="text-muted-foreground/70 hover:text-foreground "
           aria-label="Cancel"
         >
           <X size={14} />
@@ -363,15 +363,15 @@ export function FacebookPostPanel({
       </div>
 
       {loadingConns ? (
-        <p className="text-xs text-zinc-500">Loading pages…</p>
+        <p className="text-xs text-muted-foreground">Loading pages…</p>
       ) : listError ? (
-        <p className="text-xs text-red-600 dark:text-red-400 font-mono break-all">{listError}</p>
+        <p className="text-xs text-destructive font-mono break-all">{listError}</p>
       ) : connections.length === 0 ? (
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-muted-foreground">
           No active Facebook pages connected.{' '}
           <Link
             href="/connections"
-            className="text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline"
+            className="text-primary hover:text-blue-700 underline-offset-2 hover:underline"
           >
             Connect one →
           </Link>
@@ -380,14 +380,14 @@ export function FacebookPostPanel({
         <>
           {connections.length > 1 && (
             <div>
-              <label className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">
+              <label className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1 block">
                 Page
               </label>
               <select
                 value={selectedId ?? ''}
                 onChange={(e) => setSelectedId(e.target.value || null)}
                 disabled={posting}
-                className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2"
+                className="w-full bg-card border border-border text-sm text-foreground px-3 py-2"
               >
                 <option value="">Select a page…</option>
                 {connections.map((c) => (
@@ -399,7 +399,7 @@ export function FacebookPostPanel({
             </div>
           )}
           <label className="block">
-            <span className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">
+            <span className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1 block">
               Post body (edit before posting)
             </span>
             <textarea
@@ -408,10 +408,10 @@ export function FacebookPostPanel({
               rows={Math.min(10, Math.max(4, body.split('\n').length + 1))}
               maxLength={60000}
               disabled={posting}
-              className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 placeholder:text-zinc-400 focus:outline-none focus:border-blue-600 font-sans resize-y"
+              className="w-full bg-card border border-border text-sm text-foreground px-3 py-2 placeholder:text-muted-foreground/70 focus:outline-none focus:border-blue-600 font-sans resize-y"
             />
             <div className="flex items-center justify-between mt-1">
-              <span className="text-[10px] text-zinc-500">
+              <span className="text-[10px] text-muted-foreground">
                 {body.length} chars
                 {body !== pieceContent && ' · edited'}
               </span>
@@ -419,7 +419,7 @@ export function FacebookPostPanel({
                 <button
                   onClick={() => setBody(pieceContent)}
                   disabled={posting}
-                  className="text-[10px] text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                  className="text-[10px] text-muted-foreground hover:text-foreground"
                 >
                   Reset to original
                 </button>
@@ -438,8 +438,8 @@ export function FacebookPostPanel({
                   onClick={() => setMediaKind(k)}
                   className={`px-2 py-1 border inline-flex items-center gap-1 ${
                     mediaKind === k
-                      ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-zinc-900 dark:border-zinc-100'
-                      : 'text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800'
+                      ? 'bg-foreground text-background border-zinc-900 dark:border-zinc-100'
+                      : 'text-muted-foreground border-border'
                   }`}
                 >
                   <Icon size={10} />
@@ -449,10 +449,10 @@ export function FacebookPostPanel({
             })}
           </div>
           {mediaKind !== 'text' && (
-            <div className="space-y-1.5 border border-zinc-200 dark:border-zinc-800 px-3 py-2 bg-white dark:bg-zinc-950">
+            <div className="space-y-1.5 border border-border px-3 py-2 bg-card">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <label className="block flex-1 min-w-[180px]">
-                  <span className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">
+                  <span className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1 block">
                     {mediaKind === 'photo' ? 'Image URL' : 'Video URL (.mp4)'} or upload
                   </span>
                   <input
@@ -467,14 +467,14 @@ export function FacebookPostPanel({
                         ? 'https://… (public image URL)'
                         : 'https://… (public MP4 URL)'
                     }
-                    className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-800 dark:text-zinc-200 px-3 py-1.5 focus:outline-none focus:border-blue-600 font-mono break-all"
+                    className="w-full bg-card border border-border text-xs text-foreground px-3 py-1.5 focus:outline-none focus:border-blue-600 font-mono break-all"
                   />
                 </label>
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={posting || uploading}
-                  className="inline-flex items-center gap-1 text-[10px] tracking-widest uppercase text-zinc-700 dark:text-zinc-300 hover:text-blue-600 disabled:opacity-50 px-2 py-1.5 border border-zinc-300 dark:border-zinc-700"
+                  className="inline-flex items-center gap-1 text-[10px] tracking-widest uppercase text-foreground/90 hover:text-primary disabled:opacity-50 px-2 py-1.5 border border-border"
                 >
                   <Upload size={11} />
                   {uploading ? 'Uploading…' : 'Upload file'}
@@ -488,15 +488,15 @@ export function FacebookPostPanel({
                 />
               </div>
               {mediaAbsoluteUrl && (
-                <p className="text-[10px] text-zinc-500 break-all">
+                <p className="text-[10px] text-muted-foreground break-all">
                   Will be fetched by Facebook from <span className="font-mono">{mediaAbsoluteUrl}</span>
                 </p>
               )}
               {uploadError && (
-                <p className="text-[11px] text-amber-700 dark:text-amber-400 break-words">{uploadError}</p>
+                <p className="text-[11px] text-amber-300 break-words">{uploadError}</p>
               )}
               {mediaKind === 'reel' && (
-                <p className="text-[10px] text-zinc-500">
+                <p className="text-[10px] text-muted-foreground">
                   Reels must be vertical 9:16 MP4, 3-90s. Facebook re-encodes on its side; the post appears 1-2 min after fire.
                 </p>
               )}
@@ -510,7 +510,7 @@ export function FacebookPostPanel({
               className={`px-2 py-1 border ${
                 mode === 'now'
                   ? 'bg-blue-600 text-white border-blue-600'
-                  : 'text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800'
+                  : 'text-muted-foreground border-border'
               }`}
             >
               Post now
@@ -521,7 +521,7 @@ export function FacebookPostPanel({
               className={`px-2 py-1 border inline-flex items-center gap-1 ${
                 mode === 'later'
                   ? 'bg-blue-600 text-white border-blue-600'
-                  : 'text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800'
+                  : 'text-muted-foreground border-border'
               }`}
             >
               <Clock size={10} />
@@ -533,7 +533,7 @@ export function FacebookPostPanel({
               className={`px-2 py-1 border inline-flex items-center gap-1 ${
                 mode === 'recurring'
                   ? 'bg-blue-600 text-white border-blue-600'
-                  : 'text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800'
+                  : 'text-muted-foreground border-border'
               }`}
             >
               <Repeat size={10} />
@@ -542,7 +542,7 @@ export function FacebookPostPanel({
           </div>
           {mode === 'later' && (
             <label className="block">
-              <span className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">
+              <span className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1 block">
                 Fire at
               </span>
               <input
@@ -550,21 +550,21 @@ export function FacebookPostPanel({
                 value={scheduleAt}
                 onChange={(e) => setScheduleAt(e.target.value)}
                 disabled={scheduling}
-                className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 focus:outline-none focus:border-blue-600"
+                className="bg-card border border-border text-sm text-foreground px-3 py-2 focus:outline-none focus:border-blue-600"
               />
             </label>
           )}
           {mode === 'recurring' && (
             <div className="flex flex-wrap gap-3 items-end">
               <label className="block">
-                <span className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">
+                <span className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1 block">
                   Every
                 </span>
                 <select
                   value={dow}
                   onChange={(e) => setDow(Number(e.target.value))}
                   disabled={scheduling}
-                  className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2"
+                  className="bg-card border border-border text-sm text-foreground px-3 py-2"
                 >
                   <option value={0}>Sunday</option>
                   <option value={1}>Monday</option>
@@ -576,7 +576,7 @@ export function FacebookPostPanel({
                 </select>
               </label>
               <label className="block">
-                <span className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">
+                <span className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1 block">
                   At
                 </span>
                 <input
@@ -585,16 +585,16 @@ export function FacebookPostPanel({
                   step={300}
                   onChange={(e) => setHhmm(e.target.value)}
                   disabled={scheduling}
-                  className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2"
+                  className="bg-card border border-border text-sm text-foreground px-3 py-2"
                 />
               </label>
-              <span className="text-[10px] text-zinc-500 self-center pb-1">
+              <span className="text-[10px] text-muted-foreground self-center pb-1">
                 {Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'} time
               </span>
             </div>
           )}
           <div className="flex items-center justify-between">
-            <span className="text-[10px] text-zinc-500">
+            <span className="text-[10px] text-muted-foreground">
               {mode === 'now'
                 ? 'Publishes immediately to the selected page'
                 : mode === 'later'
@@ -605,7 +605,7 @@ export function FacebookPostPanel({
               <button
                 onClick={submit}
                 disabled={posting || !selectedId || body.trim().length === 0}
-                className="bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
+                className="bg-primary hover:bg-accent disabled:bg-zinc-300 disabled:text-muted-foreground dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
               >
                 <Send size={11} />
                 {posting ? 'Posting…' : 'Post to Facebook'}
@@ -614,7 +614,7 @@ export function FacebookPostPanel({
               <button
                 onClick={schedule}
                 disabled={scheduling || !selectedId || body.trim().length === 0}
-                className="bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
+                className="bg-primary hover:bg-accent disabled:bg-zinc-300 disabled:text-muted-foreground dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
               >
                 <Clock size={11} />
                 {scheduling ? 'Scheduling…' : 'Schedule post'}
@@ -623,7 +623,7 @@ export function FacebookPostPanel({
               <button
                 onClick={scheduleRecurring}
                 disabled={scheduling || !selectedId || body.trim().length === 0}
-                className="bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
+                className="bg-primary hover:bg-accent disabled:bg-zinc-300 disabled:text-muted-foreground dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
               >
                 <Repeat size={11} />
                 {scheduling ? 'Saving…' : 'Save recurring'}
@@ -634,11 +634,11 @@ export function FacebookPostPanel({
       )}
 
       {postError && (
-        <p className="text-xs text-red-600 dark:text-red-400 font-mono break-all">{postError}</p>
+        <p className="text-xs text-destructive font-mono break-all">{postError}</p>
       )}
 
       {scheduleResult && (
-        <div className="px-3 py-2 text-[11px] font-mono border text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900">
+        <div className="px-3 py-2 text-[11px] font-mono border text-primary bg-primary/10 border-primary/40">
           <span className="font-medium">⧖ Scheduled</span>
           <span className="ml-2">
             fires {new Date(scheduleResult.scheduledAt).toLocaleString()} · id {scheduleResult.id}
@@ -647,7 +647,7 @@ export function FacebookPostPanel({
       )}
 
       {recurringResult && (
-        <div className="px-3 py-2 text-[11px] font-mono border text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900">
+        <div className="px-3 py-2 text-[11px] font-mono border text-primary bg-primary/10 border-primary/40">
           <span className="font-medium">↻ Recurring set</span>
           <span className="ml-2">
             first fire {new Date(recurringResult.nextFireAt).toLocaleString()} · id {recurringResult.id}
@@ -659,8 +659,8 @@ export function FacebookPostPanel({
         <div
           className={`px-3 py-2 text-[11px] font-mono border ${
             result.status === 'POSTED'
-              ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900'
-              : 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-900'
+              ? 'text-emerald-400 bg-emerald-950/30 border-emerald-900/60'
+              : 'text-amber-300 bg-amber-950/30 border-amber-900/60'
           }`}
         >
           <span className="font-medium">
