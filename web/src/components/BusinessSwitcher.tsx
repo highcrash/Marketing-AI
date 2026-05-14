@@ -1,9 +1,18 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Building2, Check, ChevronsUpDown, Plus } from 'lucide-react';
+import { Building2, Check, ChevronsUpDown, Loader2, Plus } from 'lucide-react';
 
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,6 +21,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
 interface BusinessSummary {
@@ -19,6 +37,12 @@ interface BusinessSummary {
   organizationId: string | null;
   name: string;
   baseUrl: string;
+}
+
+interface OrgSummary {
+  id: string;
+  name: string;
+  role: 'OWNER' | 'ADMIN' | 'MEMBER';
 }
 
 /// Active-business picker for the header. Reads /api/businesses (which
@@ -31,25 +55,32 @@ interface BusinessSummary {
 /// lands.
 export function BusinessSwitcher() {
   const [businesses, setBusinesses] = useState<BusinessSummary[]>([]);
+  const [orgs, setOrgs] = useState<OrgSummary[]>([]);
   const [active, setActive] = useState<BusinessSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+
+  async function reload() {
+    try {
+      const orgsRes = await fetch('/api/orgs');
+      const orgsBody = (await orgsRes.json()) as { orgs?: OrgSummary[] };
+      setOrgs(orgsBody.orgs ?? []);
+      const res = await fetch('/api/businesses');
+      const body = (await res.json()) as { businesses?: BusinessSummary[] };
+      const list = body.businesses ?? [];
+      setBusinesses(list);
+      setActive((prev) => prev ?? list[0] ?? null);
+    } catch {
+      // Best-effort; switcher just renders empty.
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      // Hit /api/orgs first so any orphan business gets adopted before
-      // /api/businesses is asked which businesses the user owns.
       try {
-        await fetch('/api/orgs');
-        const res = await fetch('/api/businesses');
-        const body = (await res.json()) as { businesses?: BusinessSummary[] };
-        if (cancelled) return;
-        const list = body.businesses ?? [];
-        setBusinesses(list);
-        setActive(list[0] ?? null);
-      } catch {
-        // Best-effort; switcher just renders empty.
+        await reload();
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -90,6 +121,7 @@ export function BusinessSwitcher() {
   }
 
   return (
+    <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
@@ -123,15 +155,162 @@ export function BusinessSwitcher() {
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          disabled
-          className="cursor-not-allowed opacity-60 text-[11px]"
-          title="Onboarding UI for adding a new business arrives in the next UI pass"
-        >
-          <Plus className="h-3.5 w-3.5" />
+        <DropdownMenuItem onClick={() => setShowAdd(true)} className="cursor-pointer">
+          <Plus className="h-3.5 w-3.5 text-primary" />
           Add business…
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    <AddBusinessDialog
+      open={showAdd}
+      orgs={orgs}
+      onOpenChange={setShowAdd}
+      onAdded={async (b) => {
+        await reload();
+        setActive(b);
+        setShowAdd(false);
+      }}
+    />
+    </>
+  );
+}
+
+function AddBusinessDialog({
+  open,
+  orgs,
+  onOpenChange,
+  onAdded,
+}: {
+  open: boolean;
+  orgs: OrgSummary[];
+  onOpenChange: (o: boolean) => void;
+  onAdded: (b: BusinessSummary) => void;
+}) {
+  const adminOrgs = orgs.filter((o) => o.role === 'OWNER' || o.role === 'ADMIN');
+  const [orgId, setOrgId] = useState(adminOrgs[0]?.id ?? '');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open && !orgId && adminOrgs[0]) setOrgId(adminOrgs[0].id);
+  }, [open, adminOrgs, orgId]);
+
+  async function submit() {
+    if (!orgId || !baseUrl.trim() || !apiKey.trim()) {
+      setError('Org + baseUrl + apiKey all required');
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/businesses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organizationId: orgId,
+          baseUrl: baseUrl.trim().replace(/\/$/, ''),
+          apiKey: apiKey.trim(),
+        }),
+      });
+      const body = (await res.json()) as { business?: BusinessSummary; error?: string; message?: string };
+      if (!res.ok || body.error || !body.business) {
+        throw new Error(body.message ?? `HTTP ${res.status}`);
+      }
+      onAdded(body.business);
+      // Reset for next open.
+      setBaseUrl('');
+      setApiKey('');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'unknown error');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-primary" />
+            Connect another business
+          </DialogTitle>
+          <DialogDescription>
+            Marketing AI calls your Restora API on every audit. Paste the business&apos;s
+            /v1/external base URL and an API key with the right scopes.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {adminOrgs.length > 1 && (
+            <div className="space-y-1.5">
+              <Label htmlFor="org">Organization</Label>
+              <Select value={orgId} onValueChange={setOrgId}>
+                <SelectTrigger id="org" disabled={submitting}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {adminOrgs.map((o) => (
+                    <SelectItem key={o.id} value={o.id}>
+                      {o.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <Label htmlFor="base">Base URL</Label>
+            <Input
+              id="base"
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              disabled={submitting}
+              placeholder="https://api.example.com/api/v1/external"
+              className="font-mono text-xs"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="key">API key</Label>
+            <Input
+              id="key"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              disabled={submitting}
+              placeholder="rk_xxxx_xxxxxxxxx"
+              className="font-mono text-xs"
+              autoComplete="off"
+            />
+            <p className="text-[10px] text-muted-foreground">
+              We&apos;ll validate by calling /business/profile before saving.
+            </p>
+          </div>
+
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription className="font-mono break-all text-xs">{error}</AlertDescription>
+            </Alert>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={submitting || !baseUrl || !apiKey}>
+            {submitting ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Validating
+              </>
+            ) : (
+              'Connect'
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 import { ActivityPanel } from './ActivityPanel';
 import { AuditComparisonPanel } from './AuditComparisonPanel';
+import { CampaignPlanCard } from './CampaignPlanCard';
 import { RecommendationCard } from './RecommendationCard';
 
 const EMPTY_SENDS: Record<number, SmsSendRow | null> = {};
@@ -273,6 +274,9 @@ export function AnalysisView({
           </Card>
         )}
       </div>
+
+      {/* Time-bucketed campaign plan derived from the recs */}
+      <CampaignPlanCard analysisId={analysisId} />
 
       {/* Recommendations + filter chips */}
       <section className="space-y-4">
