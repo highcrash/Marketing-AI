@@ -42,10 +42,14 @@ function nextWeeklyFireLocal(dayOfWeek: number, hour: number, minute: number): D
 export function SchedulePanel({
   draftId,
   pieceIndex,
+  pieceContent,
   onClose,
 }: {
   draftId: string;
   pieceIndex: number;
+  /// Canonical SMS body from the draft. Seeds the editable body
+  /// textarea; user can fix placeholders before scheduling.
+  pieceContent: string;
   onClose: () => void;
 }) {
   const [onceItems, setOnceItems] = useState<ScheduledSendRow[]>([]);
@@ -71,6 +75,10 @@ export function SchedulePanel({
   const [maxLastVisitDays, setMaxLastVisitDays] = useState('');
   const [minLoyaltyPoints, setMinLoyaltyPoints] = useState('');
   const [campaignTag, setCampaignTag] = useState('');
+  /// Editable body — captured at schedule time, persisted on the
+  /// ScheduledSend / RecurringSchedule config so every future fire
+  /// uses this edit even if the piece's canonical content drifts.
+  const [editedBody, setEditedBody] = useState(pieceContent);
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -113,16 +121,18 @@ export function SchedulePanel({
   }, [refresh]);
 
   function buildConfig(): ScheduledConfig {
+    const trimmedBody = editedBody.trim();
+    const body = trimmedBody.length === 0 || trimmedBody === pieceContent ? null : trimmedBody;
     if (sendMode === 'single') {
       if (phone.trim().length < 6) throw new Error('Phone number required');
-      return { phone: phone.trim(), campaignTag: campaignTag.trim() || null };
+      return { phone: phone.trim(), campaignTag: campaignTag.trim() || null, body };
     }
     const segment: ScheduledBlastConfig['segment'] = {};
     if (minSpent.trim()) segment.minSpent = Number(minSpent);
     if (minVisits.trim()) segment.minVisits = Number(minVisits);
     if (maxLastVisitDays.trim()) segment.maxLastVisitDays = Number(maxLastVisitDays);
     if (minLoyaltyPoints.trim()) segment.minLoyaltyPoints = Number(minLoyaltyPoints);
-    return { segment, campaignTag: campaignTag.trim() || null };
+    return { segment, campaignTag: campaignTag.trim() || null, body };
   }
 
   function resetForm() {
@@ -132,6 +142,7 @@ export function SchedulePanel({
     setMaxLastVisitDays('');
     setMinLoyaltyPoints('');
     setCampaignTag('');
+    setEditedBody(pieceContent);
     setScheduledAtLocal(tomorrowAtTenLocal());
   }
 
@@ -311,6 +322,35 @@ export function SchedulePanel({
           <Users size={11} /> Segment
         </TabButton>
       </div>
+
+      <label className="block">
+        <span className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">
+          SMS body (edit before scheduling — fix any [DATE+X] / placeholders)
+        </span>
+        <textarea
+          value={editedBody}
+          onChange={(e) => setEditedBody(e.target.value)}
+          rows={Math.min(8, Math.max(3, editedBody.split('\n').length + 1))}
+          maxLength={1000}
+          disabled={submitting}
+          className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 placeholder:text-zinc-400 focus:outline-none focus:border-blue-600 font-sans resize-y"
+        />
+        <div className="flex items-center justify-between mt-1">
+          <span className="text-[10px] text-zinc-500">
+            {editedBody.length} chars
+            {editedBody !== pieceContent && ' · edited (saved with this schedule)'}
+          </span>
+          {editedBody !== pieceContent && (
+            <button
+              onClick={() => setEditedBody(pieceContent)}
+              disabled={submitting}
+              className="text-[10px] text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+            >
+              Reset to original
+            </button>
+          )}
+        </div>
+      </label>
 
       {recurrence === 'once' ? (
         <label className="flex flex-col gap-1">

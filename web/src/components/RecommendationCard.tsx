@@ -12,6 +12,51 @@ const PRIORITY_STYLES: Record<Recommendation['priority'], string> = {
   low: 'bg-zinc-400 text-white',
 };
 
+interface ProgressBadge {
+  label: string;
+  className: string;
+}
+
+/// Single source of truth for "where is this recommendation in its
+/// lifecycle." The badge shows up next to the priority pill in the rec
+/// header so the user can scan the list and see what's progressed.
+function computeProgressBadge(
+  draft: DraftRow | undefined,
+  completionsByPiece: Record<number, PieceCompletionRow | null>,
+): ProgressBadge {
+  if (!draft) {
+    return {
+      label: 'Not drafted',
+      className:
+        'bg-zinc-100 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-800',
+    };
+  }
+  if (draft.status === 'REJECTED') {
+    return { label: 'Rejected', className: 'bg-amber-600 text-white' };
+  }
+  if (draft.status === 'PENDING_REVIEW') {
+    return {
+      label: 'Drafted',
+      className: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300',
+    };
+  }
+  const totalPieces = draft.payload.pieces?.length ?? 0;
+  const completedPieces = Object.values(completionsByPiece ?? {}).filter(Boolean).length;
+  if (totalPieces === 0 || completedPieces === 0) {
+    return { label: 'Approved', className: 'bg-emerald-600 text-white' };
+  }
+  if (completedPieces < totalPieces) {
+    return {
+      label: `In progress · ${completedPieces}/${totalPieces}`,
+      className: 'bg-blue-600 text-white',
+    };
+  }
+  return {
+    label: `Done · ${totalPieces}/${totalPieces}`,
+    className: 'bg-emerald-700 text-white',
+  };
+}
+
 export function RecommendationCard({
   rec,
   draft,
@@ -45,6 +90,7 @@ export function RecommendationCard({
   onSegmentBlastSent: () => void;
   onToggleCompletion: (pieceIndex: number, currentlyComplete: boolean) => void;
 }) {
+  const progress = computeProgressBadge(draft, completionsByPiece);
   return (
     <article className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-5">
       <header className="flex items-start gap-3 mb-3">
@@ -56,6 +102,12 @@ export function RecommendationCard({
           {rec.priority}
         </span>
         <h5 className="flex-1 font-semibold text-zinc-900 dark:text-zinc-100">{rec.title}</h5>
+        <span
+          className={`text-[10px] tracking-widest uppercase font-medium px-2 py-0.5 whitespace-nowrap ${progress.className}`}
+          title="Progress on this recommendation"
+        >
+          {progress.label}
+        </span>
       </header>
 
       <p className="text-sm text-zinc-700 dark:text-zinc-300 mb-3">

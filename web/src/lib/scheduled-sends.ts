@@ -6,11 +6,18 @@ export type ScheduledKind = 'single' | 'blast';
 export interface ScheduledSingleConfig {
   phone: string;
   campaignTag?: string | null;
+  /// User-edited body captured at schedule time. When set, the
+  /// scheduler passes it to execute-sends as bodyOverride so the fire
+  /// uses the edited copy instead of piece.content.
+  body?: string | null;
 }
 
 export interface ScheduledBlastConfig {
   segment: BlastSegmentFilter;
   campaignTag?: string | null;
+  /// Same as the single config — captured edit; replaces piece.content
+  /// for this scheduled fire.
+  body?: string | null;
 }
 
 export type ScheduledConfig = ScheduledSingleConfig | ScheduledBlastConfig;

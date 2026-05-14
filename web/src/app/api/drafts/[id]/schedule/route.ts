@@ -24,6 +24,8 @@ const PHONE_RE = /^[+0-9()\-\s]{6,20}$/;
 function parseConfig(kind: string, raw: unknown): ScheduledConfig | null {
   if (!raw || typeof raw !== 'object') return null;
   const obj = raw as Record<string, unknown>;
+  const body =
+    typeof obj.body === 'string' && obj.body.trim().length > 0 ? obj.body.trim() : null;
   if (kind === 'single') {
     const phone = typeof obj.phone === 'string' ? obj.phone.trim() : '';
     if (!PHONE_RE.test(phone)) return null;
@@ -31,7 +33,7 @@ function parseConfig(kind: string, raw: unknown): ScheduledConfig | null {
       typeof obj.campaignTag === 'string' && obj.campaignTag.trim().length > 0
         ? obj.campaignTag.trim().slice(0, 120)
         : null;
-    return { phone, campaignTag };
+    return { phone, campaignTag, body };
   }
   if (kind === 'blast') {
     const seg = obj.segment;
@@ -49,7 +51,7 @@ function parseConfig(kind: string, raw: unknown): ScheduledConfig | null {
       typeof obj.campaignTag === 'string' && obj.campaignTag.trim().length > 0
         ? obj.campaignTag.trim().slice(0, 120)
         : null;
-    return { segment: filter, campaignTag };
+    return { segment: filter, campaignTag, body };
   }
   return null;
 }

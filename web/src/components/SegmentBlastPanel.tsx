@@ -23,12 +23,17 @@ interface Preview {
 export function SegmentBlastPanel({
   draftId,
   pieceIndex,
+  pieceContent,
   onClose,
   onSent,
   initialResult,
 }: {
   draftId: string;
   pieceIndex: number;
+  /// Canonical SMS body from the draft. The panel seeds its editable
+  /// body textarea with this; the user can fix placeholders before
+  /// blasting to real customers. piece.content stays untouched.
+  pieceContent: string;
   onClose: () => void;
   /// Called after a successful send so the parent can refresh history.
   onSent?: (event: BlastEventRow) => void;
@@ -36,6 +41,7 @@ export function SegmentBlastPanel({
   initialResult?: BlastEventRow | null;
 }) {
   const [mode, setMode] = useState<Mode>(initialResult ? 'sent' : 'idle');
+  const [editedBody, setEditedBody] = useState(pieceContent);
   const [minSpent, setMinSpent] = useState('');
   const [minVisits, setMinVisits] = useState('');
   const [maxLastVisitDays, setMaxLastVisitDays] = useState('');
@@ -55,6 +61,12 @@ export function SegmentBlastPanel({
     return out;
   }
 
+  function bodyOverrideOrNull(): string | null {
+    const trimmed = editedBody.trim();
+    if (trimmed.length === 0) return null;
+    return trimmed === pieceContent ? null : trimmed;
+  }
+
   async function runPreview() {
     setMode('previewing');
     setError(null);
@@ -67,6 +79,7 @@ export function SegmentBlastPanel({
           pieceIndex,
           segment: buildSegment(),
           dryRun: true,
+          ...(bodyOverrideOrNull() ? { body: bodyOverrideOrNull() } : {}),
         }),
       });
       const body = (await res.json()) as
@@ -96,6 +109,7 @@ export function SegmentBlastPanel({
           segment: buildSegment(),
           campaignTag: campaignTag.trim() || undefined,
           dryRun: false,
+          ...(bodyOverrideOrNull() ? { body: bodyOverrideOrNull() } : {}),
         }),
       });
       const body = (await res.json()) as
@@ -141,6 +155,35 @@ export function SegmentBlastPanel({
 
       {mode !== 'sent' && (
         <>
+          <label className="block">
+            <span className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">
+              SMS body (edit before blasting — fix any [DATE+X] / placeholders)
+            </span>
+            <textarea
+              value={editedBody}
+              onChange={(e) => setEditedBody(e.target.value)}
+              rows={Math.min(8, Math.max(3, editedBody.split('\n').length + 1))}
+              maxLength={1000}
+              disabled={isBusy}
+              className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 placeholder:text-zinc-400 focus:outline-none focus:border-emerald-600 font-sans resize-y"
+            />
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-[10px] text-zinc-500">
+                {editedBody.length} chars
+                {editedBody !== pieceContent && ' · edited'}
+              </span>
+              {editedBody !== pieceContent && (
+                <button
+                  onClick={() => setEditedBody(pieceContent)}
+                  disabled={isBusy}
+                  className="text-[10px] text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                >
+                  Reset to original
+                </button>
+              )}
+            </div>
+          </label>
+
           <div className="grid grid-cols-2 gap-2 text-[11px]">
             <FilterInput
               label="Min spend (BDT)"

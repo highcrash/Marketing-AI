@@ -118,7 +118,7 @@ export function DraftView({
           <span className="px-2 py-0.5 bg-zinc-200 dark:bg-zinc-800 uppercase tracking-wider text-[10px]">
             {payload.campaignType.replace(/-/g, ' ')}
           </span>
-          {payload.channels.map((c) => (
+          {(payload.channels ?? []).map((c) => (
             <span
               key={c}
               className="px-2 py-0.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-[10px] uppercase tracking-wider"
@@ -144,7 +144,7 @@ export function DraftView({
           Pieces · ready to paste
         </p>
         <div className="space-y-3">
-          {payload.pieces.map((piece, i) => (
+          {(payload.pieces ?? []).map((piece, i) => (
             <PieceCard
               key={i}
               piece={piece}
@@ -191,7 +191,7 @@ export function DraftView({
       <section>
         <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-2">KPIs to watch</p>
         <ul className="space-y-1.5 text-sm text-zinc-700 dark:text-zinc-300">
-          {payload.kpis.map((k, i) => (
+          {(payload.kpis ?? []).map((k, i) => (
             <li key={i} className="flex gap-2">
               <span className="text-red-600 mt-0.5">●</span>
               <span>{k}</span>
@@ -205,19 +205,19 @@ export function DraftView({
           Execution checklist
         </p>
         <ol className="space-y-1.5 text-sm text-zinc-700 dark:text-zinc-300 list-decimal pl-5">
-          {payload.executionChecklist.map((c, i) => (
+          {(payload.executionChecklist ?? []).map((c, i) => (
             <li key={i}>{c}</li>
           ))}
         </ol>
       </section>
 
-      {payload.warnings.length > 0 && (
+      {(payload.warnings?.length ?? 0) > 0 && (
         <section className="border-t border-zinc-200 dark:border-zinc-800 pt-3">
           <p className="text-[10px] uppercase tracking-widest text-amber-600 dark:text-amber-500 mb-2">
             Watch out
           </p>
           <ul className="space-y-1 text-xs text-amber-700 dark:text-amber-400">
-            {payload.warnings.map((w, i) => (
+            {(payload.warnings ?? []).map((w, i) => (
               <li key={i} className="flex gap-2">
                 <span>⚠</span>
                 <span>{w}</span>
@@ -539,6 +539,7 @@ function PieceCard({
         <SegmentBlastPanel
           draftId={draftId}
           pieceIndex={pieceIndex}
+          pieceContent={piece.content}
           onClose={() => setShowBlastForm(false)}
           onSent={onSegmentBlastSent}
         />
@@ -548,6 +549,7 @@ function PieceCard({
         <SchedulePanel
           draftId={draftId}
           pieceIndex={pieceIndex}
+          pieceContent={piece.content}
           onClose={() => setShowScheduleForm(false)}
         />
       )}

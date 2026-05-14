@@ -141,6 +141,7 @@ export async function runSchedulerTick(): Promise<{ fired: number; failed: numbe
             pieceIndex: row.pieceIndex,
             phone: cfg.phone,
             campaignTag: cfg.campaignTag ?? null,
+            bodyOverride: cfg.body ?? null,
           });
           await markScheduledComplete(row.id, result);
           fired += 1;
@@ -152,6 +153,7 @@ export async function runSchedulerTick(): Promise<{ fired: number; failed: numbe
             pieceIndex: row.pieceIndex,
             segment: cfg.segment,
             campaignTag: cfg.campaignTag ?? null,
+            bodyOverride: cfg.body ?? null,
           });
           await markScheduledComplete(row.id, result);
           fired += 1;
