@@ -1,10 +1,11 @@
 'use client';
 
-import { AlertTriangle, ArrowRight, Sparkles, Wrench } from 'lucide-react';
+import { ArrowRight, Calendar, Sparkles, Wrench } from 'lucide-react';
 
 import type { Recommendation } from '@/lib/ai/analyze';
 import type { DraftRow } from '@/lib/drafts';
 import type { PieceCompletionRow } from '@/lib/piece-completions';
+import type { PlanTask } from '@/lib/plan-types';
 import type { SmsSendRow } from '@/lib/sms-sends';
 import { computeRecStatus } from '@/lib/rec-status';
 import { cn } from '@/lib/utils';
@@ -27,6 +28,7 @@ const PRIORITY_VARIANT: Record<
 export function RecommendationCard({
   rec,
   draft,
+  planTasks,
   isDrafting,
   isRefining,
   isUpdatingStatus,
@@ -43,6 +45,9 @@ export function RecommendationCard({
 }: {
   rec: Recommendation;
   draft: DraftRow | undefined;
+  /// Plan tasks that target this rec (from the latest plan). Empty
+  /// array when there's no plan or this rec isn't in it.
+  planTasks?: PlanTask[];
   isDrafting: boolean;
   isRefining: boolean;
   isUpdatingStatus: boolean;
@@ -101,6 +106,39 @@ export function RecommendationCard({
             </Block>
           )}
         </div>
+
+        {planTasks && planTasks.length > 0 && (
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2 inline-flex items-center gap-1.5">
+              <Calendar className="h-3 w-3 text-primary" />
+              Scheduled in plan · {planTasks.length}
+            </p>
+            <ul className="space-y-1 text-[12px]">
+              {planTasks
+                .slice()
+                .sort((a, b) => (a.date < b.date ? -1 : 1))
+                .map((t, i) => (
+                  <li
+                    key={i}
+                    className="flex items-center gap-2 px-2 py-1 bg-primary/5 border border-primary/30 text-foreground"
+                  >
+                    <span className="font-mono text-muted-foreground tabular-nums">
+                      {new Date(t.date).toLocaleDateString(undefined, {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                      {t.hour !== null && ` · ${String(t.hour).padStart(2, '0')}:00`}
+                    </span>
+                    <span className="text-foreground/90 truncate flex-1">{t.title}</span>
+                    <span className="font-mono text-muted-foreground flex-shrink-0">
+                      ৳{(t.budgetMinor / 100).toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+            </ul>
+          </div>
+        )}
 
         <div>
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">

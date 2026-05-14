@@ -1,19 +1,47 @@
 'use client';
 
-import { useState } from 'react';
-import { AlertTriangle, Loader2, Sparkles } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Activity,
+  AlertTriangle,
+  Calendar,
+  History,
+  LayoutGrid,
+  ListTodo,
+  Loader2,
+  Sparkles,
+  Target,
+  Users,
+} from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 
 import { AnalysisView } from './AnalysisView';
 import { GoalsCard } from './GoalsCard';
 import { OperationalStatsCard } from './OperationalStatsCard';
-import type { AnalysisResult } from '@/lib/ai/analyze';
+import type { AnalysisResult, Recommendation } from '@/lib/ai/analyze';
 import type { AnalysisListItem, CompletionsByKey, DraftsByRecIndex } from '@/lib/analyses';
 import type { DraftRow } from '@/lib/drafts';
 import type { SmsSendRow } from '@/lib/sms-sends';
+import type { CampaignPlan } from '@/lib/plan-types';
+
+export type DashboardSection = 'overview' | 'audience' | 'plan' | 'recs' | 'activity';
+
+const REC_CATEGORIES: Array<{ id: Recommendation['category']; label: string }> = [
+  { id: 'acquisition', label: 'Acquisition' },
+  { id: 'retention', label: 'Retention' },
+  { id: 'pricing', label: 'Pricing' },
+  { id: 'product-mix', label: 'Product mix' },
+  { id: 'channel-strategy', label: 'Channel strategy' },
+  { id: 'content', label: 'Content' },
+  { id: 'operations', label: 'Operations' },
+  { id: 'brand', label: 'Brand' },
+];
 
 type Status = 'idle' | 'running' | 'error';
 
@@ -51,6 +79,92 @@ export function AnalysisDashboard({
   /// `current.drafts` so they update instantly without waiting.
   const [activityRefreshKey, setActivityRefreshKey] = useState(0);
   const bumpActivity = () => setActivityRefreshKey((k) => k + 1);
+
+  /// Which dashboard section the user is looking at. Sidebar nav
+  /// drives this; defaults to 'overview' on fresh load and on every
+  /// analysis switch.
+  const [section, setSection] = useState<DashboardSection>('overview');
+  /// Within the Recommendations section, which category the user is
+  /// filtering to. 'all' shows every rec.
+  const [recCategory, setRecCategory] = useState<'all' | Recommendation['category']>('all');
+  /// When a plan task asks to jump to its rec, we set this so the
+  /// content area can scroll to the matching #rec-N element after the
+  /// section switches. Cleared once the scroll fires.
+  const [scrollTarget, setScrollTarget] = useState<string | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+
+  /// Campaign plan lifted up to dashboard scope so both the Plan
+  /// section and the Recommendations section can read it. The Plan
+  /// section drives mutations; Rec cards use it read-only to surface
+  /// 'In plan · Week N · …' badges + a click-to-jump link.
+  const [plans, setPlans] = useState<CampaignPlan[]>([]);
+  const [planLoading, setPlanLoading] = useState(false);
+  const latestPlan = plans[0] ?? null;
+
+  const loadPlans = useCallback(
+    async (analysisId: string) => {
+      setPlanLoading(true);
+      try {
+        const res = await fetch(`/api/analyses/${encodeURIComponent(analysisId)}/plan`);
+        const body = (await res.json()) as { plans?: CampaignPlan[] };
+        setPlans(body.plans ?? []);
+      } catch {
+        setPlans([]);
+      } finally {
+        setPlanLoading(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (current) void loadPlans(current.id);
+    else setPlans([]);
+  }, [current, loadPlans]);
+
+  /// Counts per rec category for the sidebar sub-nav.
+  const categoryCounts = useMemo(() => {
+    if (!current) return {} as Record<Recommendation['category'], number>;
+    const out: Partial<Record<Recommendation['category'], number>> = {};
+    for (const r of current.result.recommendations) {
+      out[r.category] = (out[r.category] ?? 0) + 1;
+    }
+    return out as Record<Recommendation['category'], number>;
+  }, [current]);
+
+  /// Called by Plan tasks: jump to the rec, highlight it after scroll.
+  function jumpToRec(recIndex: number) {
+    setSection('recs');
+    setRecCategory('all');
+    setScrollTarget(`rec-${recIndex}`);
+  }
+
+  /// After section change OR scrollTarget change, attempt to scroll.
+  useEffect(() => {
+    if (!scrollTarget) return;
+    // requestAnimationFrame so the freshly-rendered section's DOM
+    // exists before we look for the anchor.
+    const handle = requestAnimationFrame(() => {
+      const el = document.getElementById(scrollTarget);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Pulse the rec for a moment so the user's eye finds it.
+        el.classList.add('ring-2', 'ring-primary');
+        setTimeout(() => {
+          el.classList.remove('ring-2', 'ring-primary');
+        }, 2000);
+      }
+      setScrollTarget(null);
+    });
+    return () => cancelAnimationFrame(handle);
+  }, [scrollTarget, section]);
+
+  // Reset section when switching analyses so the user doesn't land on
+  // a deep page they weren't expecting.
+  useEffect(() => {
+    setSection('overview');
+    setRecCategory('all');
+  }, [current?.id]);
 
   async function runAnalysis() {
     setStatus('running');
@@ -353,8 +467,8 @@ export function AnalysisDashboard({
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
-      <aside className="space-y-4">
+    <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 items-start">
+      <aside className="lg:sticky lg:top-20 space-y-4">
         <Button
           onClick={runAnalysis}
           disabled={status === 'running'}
@@ -369,7 +483,7 @@ export function AnalysisDashboard({
           ) : (
             <>
               <Sparkles className="h-4 w-4" />
-              Run analysis
+              {current ? 'Run new audit' : 'Run analysis'}
             </>
           )}
         </Button>
@@ -419,12 +533,78 @@ export function AnalysisDashboard({
           </Alert>
         )}
 
+        {current && (
+          <Card>
+            <CardHeader className="py-3">
+              <CardTitle className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-semibold">
+                Sections
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-2 space-y-0.5">
+              <SidebarNav
+                icon={LayoutGrid}
+                label="Overview"
+                active={section === 'overview'}
+                onClick={() => setSection('overview')}
+              />
+              <SidebarNav
+                icon={Users}
+                label="Audience & goals"
+                active={section === 'audience'}
+                onClick={() => setSection('audience')}
+                badge={current.result.audience?.confidence === 'low' ? 'check' : undefined}
+              />
+              <SidebarNav
+                icon={Calendar}
+                label="Campaign plan"
+                active={section === 'plan'}
+                onClick={() => setSection('plan')}
+                badge={latestPlan ? `${latestPlan.tasks.length}` : undefined}
+              />
+              <SidebarNav
+                icon={ListTodo}
+                label="Recommendations"
+                active={section === 'recs' && recCategory === 'all'}
+                onClick={() => {
+                  setSection('recs');
+                  setRecCategory('all');
+                }}
+                badge={`${current.result.recommendations.length}`}
+              />
+              {/* Sub-nav: filter by category (only the categories
+                  actually present on this audit). Auto-activates the
+                  parent 'Recommendations' section. */}
+              {section === 'recs' && (
+                <div className="pl-6 space-y-0.5 mt-1">
+                  {REC_CATEGORIES.filter((c) => (categoryCounts[c.id] ?? 0) > 0).map((c) => (
+                    <SidebarNav
+                      key={c.id}
+                      label={c.label}
+                      active={recCategory === c.id}
+                      onClick={() => setRecCategory(c.id)}
+                      badge={`${categoryCounts[c.id] ?? 0}`}
+                      compact
+                    />
+                  ))}
+                </div>
+              )}
+              <SidebarNav
+                icon={Activity}
+                label="Activity"
+                active={section === 'activity'}
+                onClick={() => setSection('activity')}
+              />
+            </CardContent>
+          </Card>
+        )}
+
         <GoalsCard />
         <OperationalStatsCard refreshKey={activityRefreshKey} />
 
         <Card>
-          <CardHeader className="py-4">
-            <CardTitle className="text-sm uppercase tracking-widest text-muted-foreground font-semibold">
+          <CardHeader className="py-3 flex-row items-center gap-2">
+            <History className="h-3.5 w-3.5 text-muted-foreground" />
+            <CardTitle className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-semibold">
               Past runs · {list.length}
             </CardTitle>
           </CardHeader>
@@ -433,17 +613,18 @@ export function AnalysisDashboard({
               <p className="text-xs text-muted-foreground px-2 py-2">No runs yet.</p>
             ) : (
               <ul className="space-y-1">
-                {list.map((item) => {
+                {list.slice(0, 5).map((item) => {
                   const isActive = current?.id === item.id;
                   return (
                     <li key={item.id}>
                       <button
                         onClick={() => loadAnalysis(item.id)}
-                        className={`w-full text-left px-3 py-2 text-xs border transition-colors ${
+                        className={cn(
+                          'w-full text-left px-3 py-2 text-xs border transition-colors',
                           isActive
                             ? 'border-primary bg-primary/10 text-foreground'
-                            : 'border-border text-muted-foreground hover:border-primary hover:text-foreground'
-                        }`}
+                            : 'border-border text-muted-foreground hover:border-primary hover:text-foreground',
+                        )}
                       >
                         <div className="font-medium text-foreground">
                           {new Date(item.generatedAt).toLocaleString()}
@@ -455,19 +636,31 @@ export function AnalysisDashboard({
                     </li>
                   );
                 })}
+                {list.length > 5 && (
+                  <li className="text-[10px] text-muted-foreground px-3 pt-1">
+                    + {list.length - 5} older
+                  </li>
+                )}
               </ul>
             )}
           </CardContent>
         </Card>
       </aside>
 
-      <section>
+      <section ref={contentRef} className="min-w-0">
         {current ? (
           <AnalysisView
             analysisId={current.id}
             result={current.result}
             drafts={current.drafts}
             completions={current.completions}
+            section={section}
+            recCategory={recCategory}
+            plans={plans}
+            latestPlan={latestPlan}
+            planLoading={planLoading}
+            onPlanCreated={(p) => setPlans((prev) => [p, ...prev])}
+            onJumpToRec={jumpToRec}
             draftingIndex={draftingIndex}
             refiningDraftId={refiningDraftId}
             updatingStatusDraftId={updatingStatusDraftId}
@@ -500,5 +693,42 @@ export function AnalysisDashboard({
         ) : null}
       </section>
     </div>
+  );
+}
+
+function SidebarNav({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+  badge,
+  compact,
+}: {
+  icon?: React.ComponentType<{ className?: string }>;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  badge?: string;
+  compact?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'w-full flex items-center gap-2 text-left transition-colors',
+        compact ? 'px-2.5 py-1 text-[11px]' : 'px-3 py-1.5 text-[12px]',
+        active
+          ? 'bg-primary/15 text-primary'
+          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+      )}
+    >
+      {Icon && <Icon className="h-3.5 w-3.5 flex-shrink-0" />}
+      <span className="flex-1 truncate">{label}</span>
+      {badge && (
+        <Badge variant={active ? 'default' : 'muted'} className="px-1 py-0">
+          {badge}
+        </Badge>
+      )}
+    </button>
   );
 }

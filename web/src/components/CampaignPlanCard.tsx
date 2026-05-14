@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react'; // useEffect kept for PlanBuilderDialog internal state sync
 import {
+  ArrowUpRight,
   Calendar,
   CheckCircle2,
   Clock,
@@ -18,6 +19,14 @@ import {
   Users,
   Video,
 } from 'lucide-react';
+
+import type { Recommendation } from '@/lib/ai/analyze';
+import type {
+  CampaignPlan,
+  DisabledCategory,
+  PlanTask,
+  PlanWeekSummary,
+} from '@/lib/plan-types';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -37,14 +46,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 
-type DisabledCategory =
-  | 'video-production'
-  | 'photography'
-  | 'physical-campaigns'
-  | 'influencer-coordination'
-  | 'creative-asset-production'
-  | 'offline-promotions';
-
 const DISABLED_OPTIONS: Array<{ id: DisabledCategory; label: string }> = [
   { id: 'video-production', label: 'Video production' },
   { id: 'photography', label: 'Photography' },
@@ -53,48 +54,6 @@ const DISABLED_OPTIONS: Array<{ id: DisabledCategory; label: string }> = [
   { id: 'creative-asset-production', label: 'Creative asset production' },
   { id: 'offline-promotions', label: 'Offline promotions' },
 ];
-
-interface PlanWeekSummary {
-  weekIndex: number;
-  startDate: string;
-  theme: string;
-  kpiToCheck: string;
-}
-
-interface PlanTask {
-  recIndex: number;
-  title: string;
-  date: string;
-  hour: number | null;
-  budgetMinor: number;
-  category:
-    | 'sms-blast'
-    | 'social-post'
-    | 'paid-ad'
-    | 'in-store'
-    | 'email'
-    | 'video-production'
-    | 'photography'
-    | 'designer-brief'
-    | 'analysis'
-    | 'other';
-  requiresHuman: boolean;
-  rationale: string;
-}
-
-interface CampaignPlan {
-  id: string;
-  analysisId: string;
-  generatedAt: string;
-  totalBudgetMinor: number;
-  horizonDays: number;
-  startDate: string;
-  disabledCategories: DisabledCategory[];
-  summary: string;
-  redistributionNotes: string[];
-  weeks: PlanWeekSummary[];
-  tasks: PlanTask[];
-}
 
 const CATEGORY_META: Record<
   PlanTask['category'],
@@ -112,30 +71,24 @@ const CATEGORY_META: Record<
   other: { label: 'Other', icon: ShoppingBag, className: 'bg-muted text-foreground' },
 };
 
-export function CampaignPlanCard({ analysisId }: { analysisId: string }) {
-  const [plans, setPlans] = useState<CampaignPlan[]>([]);
-  const [loading, setLoading] = useState(true);
+export function CampaignPlanCard({
+  analysisId,
+  plans,
+  latestPlan,
+  loading,
+  onPlanCreated,
+  onJumpToRec,
+  recommendations,
+}: {
+  analysisId: string;
+  plans: CampaignPlan[];
+  latestPlan: CampaignPlan | null;
+  loading: boolean;
+  onPlanCreated: (plan: CampaignPlan) => void;
+  onJumpToRec: (recIndex: number) => void;
+  recommendations: Recommendation[];
+}) {
   const [showBuilder, setShowBuilder] = useState(false);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/analyses/${encodeURIComponent(analysisId)}/plan`);
-      const body = (await res.json()) as { plans?: CampaignPlan[]; error?: string };
-      if (!res.ok || body.error) return;
-      setPlans(body.plans ?? []);
-    } catch {
-      // best-effort
-    } finally {
-      setLoading(false);
-    }
-  }, [analysisId]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const latest = plans[0] ?? null;
 
   return (
     <>
@@ -151,7 +104,7 @@ export function CampaignPlanCard({ analysisId }: { analysisId: string }) {
             )}
           </CardTitle>
           <Button size="sm" onClick={() => setShowBuilder(true)} className="gap-1.5">
-            {latest ? (
+            {latestPlan ? (
               <>
                 <Plus className="h-3.5 w-3.5" />
                 New plan
@@ -168,8 +121,8 @@ export function CampaignPlanCard({ analysisId }: { analysisId: string }) {
         <CardContent>
           {loading ? (
             <p className="text-xs text-muted-foreground">Loading…</p>
-          ) : latest ? (
-            <PlanDisplay plan={latest} />
+          ) : latestPlan ? (
+            <PlanDisplay plan={latestPlan} onJumpToRec={onJumpToRec} recommendations={recommendations} />
           ) : (
             <p className="text-sm text-muted-foreground italic leading-relaxed">
               Turn this audit&apos;s recommendations into a time-bucketed calendar with redistributable
@@ -186,7 +139,7 @@ export function CampaignPlanCard({ analysisId }: { analysisId: string }) {
         analysisId={analysisId}
         onOpenChange={setShowBuilder}
         onBuilt={(plan) => {
-          setPlans((prev) => [plan, ...prev]);
+          onPlanCreated(plan);
           setShowBuilder(false);
         }}
       />
@@ -194,7 +147,15 @@ export function CampaignPlanCard({ analysisId }: { analysisId: string }) {
   );
 }
 
-function PlanDisplay({ plan }: { plan: CampaignPlan }) {
+function PlanDisplay({
+  plan,
+  onJumpToRec,
+  recommendations,
+}: {
+  plan: CampaignPlan;
+  onJumpToRec: (recIndex: number) => void;
+  recommendations: Recommendation[];
+}) {
   const tasksByWeek = new Map<number, PlanTask[]>();
   // Bucket tasks into their week by date. We use the week's startDate
   // + 7 days as the boundary so tasks line up with the weeks the AI
@@ -321,9 +282,18 @@ function PlanDisplay({ plan }: { plan: CampaignPlan }) {
                                 ৳{(t.budgetMinor / 100).toLocaleString()}
                               </span>
                             </div>
-                            <p className="text-[11px] text-muted-foreground">
-                              <span className="text-foreground/70">Rec #{t.recIndex + 1}</span> · {t.rationale}
-                            </p>
+                            <div className="flex items-baseline gap-2 text-[11px] text-muted-foreground">
+                              <button
+                                onClick={() => onJumpToRec(t.recIndex)}
+                                className="inline-flex items-center gap-0.5 text-primary hover:text-accent font-medium underline-offset-2 hover:underline"
+                                title={recommendations[t.recIndex]?.title ?? `Rec #${t.recIndex + 1}`}
+                              >
+                                Rec #{t.recIndex + 1}
+                                <ArrowUpRight className="h-3 w-3" />
+                              </button>
+                              <span className="text-muted-foreground/70">·</span>
+                              <span className="text-muted-foreground line-clamp-2">{t.rationale}</span>
+                            </div>
                           </div>
                         </li>
                       );
