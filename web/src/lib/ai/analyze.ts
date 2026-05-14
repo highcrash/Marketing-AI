@@ -56,6 +56,39 @@ export interface Recommendation {
   relatedSkills: string[];
 }
 
+/// Structured audience profile the AI infers from the business data +
+/// connected social accounts. Owner-set `goalNotes` can refine this.
+///
+/// `confidence` is the AI's own estimate of how reliable this profile
+/// is given the data it had. When it's 'low' the UI surfaces a banner
+/// asking the owner to confirm or override the inferred fields — the
+/// "fail-safe" the original plan called out.
+export interface AudienceProfile {
+  /// Geographic primary market — usually a city/region. Pulled from
+  /// the business profile when available; refined by Claude from
+  /// customer activity + FB page locale when it can.
+  region: string;
+  /// IANA-ish country code or 'UNKNOWN'.
+  country: string;
+  /// Loose demographic ranges; never PII-level. E.g. ["25-44 working adults",
+  /// "students who eat after class hours"].
+  demographics: string[];
+  /// Channel-specific behavioural notes. E.g. "Page fans skew evenings
+  /// and weekends; SMS opens are highest Sun-Thu around lunch".
+  behaviour: string[];
+  /// Highest-value customer segments named in business terms.
+  /// E.g. "Returning weekday lunch crowd", "Eid week families".
+  highValueSegments: string[];
+  /// 'high' = enough data to act on without owner confirmation.
+  /// 'medium' = act with caveats.
+  /// 'low' = ask the owner to confirm before doing anything segment-
+  /// specific.
+  confidence: 'high' | 'medium' | 'low';
+  /// When confidence < 'high', specific fields the owner should
+  /// confirm. Empty when confidence is high.
+  needsConfirmation: string[];
+}
+
 export interface AnalysisResult {
   business: {
     name: string;
@@ -73,6 +106,10 @@ export interface AnalysisResult {
   recommendations: Recommendation[];
   /** Free-text exec summary the model writes before listing recommendations. */
   summary: string;
+  /** Structured target-audience profile inferred from the data.
+   *  Optional for backwards compat with audits saved before the
+   *  audience tool field existed. */
+  audience?: AudienceProfile;
   /** What the model judged about the business when no goals were specified. */
   inferredGoals: string[];
 }
@@ -94,6 +131,41 @@ const RECOMMENDATION_TOOL = {
         items: { type: 'string' },
         description:
           'Goals you inferred from the data (e.g. "increase repeat-visit rate among the 700+ inactive customer base"). 1-4 items.',
+      },
+      audience: {
+        type: 'object',
+        description:
+          'Structured target-audience profile. Pull region + country from the profile JSON. Infer demographics + behaviour + highValueSegments from sales patterns, customer segment data, and (when present) facebookPages stats. Set confidence honestly: high only when you have multiple data sources agreeing; low when you are mostly guessing from a small or thin snapshot. needsConfirmation lists the SPECIFIC fields the owner should sanity-check before you act on them; empty when confidence is high.',
+        properties: {
+          region: { type: 'string' },
+          country: { type: 'string' },
+          demographics: {
+            type: 'array',
+            items: { type: 'string' },
+            minItems: 0,
+            maxItems: 6,
+          },
+          behaviour: {
+            type: 'array',
+            items: { type: 'string' },
+            minItems: 0,
+            maxItems: 6,
+          },
+          highValueSegments: {
+            type: 'array',
+            items: { type: 'string' },
+            minItems: 0,
+            maxItems: 6,
+          },
+          confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+          needsConfirmation: {
+            type: 'array',
+            items: { type: 'string' },
+            minItems: 0,
+            maxItems: 6,
+          },
+        },
+        required: ['region', 'country', 'demographics', 'behaviour', 'highValueSegments', 'confidence', 'needsConfirmation'],
       },
       recommendations: {
         type: 'array',
@@ -165,7 +237,7 @@ const RECOMMENDATION_TOOL = {
         },
       },
     },
-    required: ['summary', 'inferredGoals', 'recommendations'],
+    required: ['summary', 'inferredGoals', 'audience', 'recommendations'],
   },
 };
 
@@ -346,6 +418,7 @@ Produce the audit by calling the submit_marketing_audit tool. Cite specific numb
   const input = toolUse.input as {
     summary: string;
     inferredGoals: string[];
+    audience: AudienceProfile;
     recommendations: Recommendation[];
   };
 
@@ -362,5 +435,6 @@ Produce the audit by calling the submit_marketing_audit tool. Cite specific numb
     recommendations: input.recommendations,
     summary: input.summary,
     inferredGoals: input.inferredGoals,
+    audience: input.audience,
   };
 }
