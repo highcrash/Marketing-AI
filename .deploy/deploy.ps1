@@ -85,8 +85,12 @@ try {
         if (Test-Path $Tarball) { Remove-Item $Tarball -Force }
         $stderrFile = Join-Path $env:TEMP "mai-tar-err-$attempt.txt"
         if (Test-Path $stderrFile) { Remove-Item $stderrFile -Force }
-        # Quote both paths since they may contain spaces.
-        $cmdLine = "tar -czf `"$Tarball`" . 2> `"$stderrFile`""
+        # bsdtar treats "C:\foo" as rsync host:path (the colon is the
+        # delimiter). --force-local isn't supported on Windows bsdtar,
+        # so we sidestep the parser entirely: write the archive to
+        # stdout and let cmd's shell redirection put it in place.
+        # tar never sees the output path.
+        $cmdLine = "tar -czf - . > `"$Tarball`" 2> `"$stderrFile`""
         & cmd.exe /c $cmdLine | Out-Null
         $rc = $LASTEXITCODE
         if ($rc -eq 0) {
