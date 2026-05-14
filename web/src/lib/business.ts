@@ -1,6 +1,42 @@
 import { prisma } from './db';
 import { RestoraClient } from './restora-client';
 
+export const STANDARD_GOAL_TAGS = [
+  'acquisition',
+  'retention',
+  'reach',
+  'engagement',
+  'conversions',
+  'brand-awareness',
+  'lead-generation',
+  'increase-sales',
+] as const;
+
+export type StandardGoalTag = (typeof STANDARD_GOAL_TAGS)[number];
+
+export interface BusinessGoals {
+  /// Subset of STANDARD_GOAL_TAGS that the owner explicitly cares about.
+  tags: StandardGoalTag[];
+  /// Free-text additions (e.g. "opening second branch in Q3").
+  notes: string | null;
+}
+
+/// Parse the persisted goalTags JSON, defensively. Falls back to []
+/// when the column is empty, malformed, or contains tags we no longer
+/// recognise.
+export function parseGoalTags(raw: string | null | undefined): StandardGoalTag[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((v): v is StandardGoalTag =>
+      typeof v === 'string' && (STANDARD_GOAL_TAGS as readonly string[]).includes(v),
+    );
+  } catch {
+    return [];
+  }
+}
+
 /// Bootstrap a single Business row from RESTORA_API_BASE / RESTORA_API_KEY.
 /// Phase 1.C is single-tenant: there's exactly one connected business and
 /// we look it up by baseUrl (the env-supplied URL). The first call against
@@ -13,6 +49,8 @@ export async function getOrCreateBusinessFromEnv(): Promise<{
   name: string;
   baseUrl: string;
   apiKey: string;
+  goalTags: string;
+  goalNotes: string | null;
 }> {
   const baseUrl = process.env.RESTORA_API_BASE?.replace(/\/$/, '');
   const apiKey = process.env.RESTORA_API_KEY;
@@ -48,4 +86,40 @@ export async function getOrCreateBusinessFromEnv(): Promise<{
       apiKey,
     },
   });
+}
+
+/// Read the persisted goals for one business. Returns empty defaults if
+/// the owner hasn't set any — that's the signal the analyze pipeline
+/// uses to fall back to "let the model infer goals from the data".
+export async function getBusinessGoals(businessId: string): Promise<BusinessGoals> {
+  const row = await prisma.business.findUnique({
+    where: { id: businessId },
+    select: { goalTags: true, goalNotes: true },
+  });
+  if (!row) return { tags: [], notes: null };
+  return {
+    tags: parseGoalTags(row.goalTags),
+    notes: row.goalNotes && row.goalNotes.trim().length > 0 ? row.goalNotes : null,
+  };
+}
+
+/// Persist owner-set marketing goals. Tags are filtered to the known
+/// vocabulary so the prompt logic never has to guard against typos.
+export async function setBusinessGoals(
+  businessId: string,
+  goals: BusinessGoals,
+): Promise<BusinessGoals> {
+  const cleanTags = Array.from(
+    new Set(goals.tags.filter((t) => (STANDARD_GOAL_TAGS as readonly string[]).includes(t))),
+  );
+  const trimmedNotes =
+    goals.notes && goals.notes.trim().length > 0 ? goals.notes.trim().slice(0, 1000) : null;
+  await prisma.business.update({
+    where: { id: businessId },
+    data: {
+      goalTags: JSON.stringify(cleanTags),
+      goalNotes: trimmedNotes,
+    },
+  });
+  return { tags: cleanTags as StandardGoalTag[], notes: trimmedNotes };
 }

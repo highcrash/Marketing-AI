@@ -21,6 +21,14 @@ export interface AnalysisOptions {
   skills?: readonly string[];
   /** Limit the days of sales history pulled. Default 90. */
   salesWindowDays?: number;
+  /// Owner-set marketing goals. When `tags` is non-empty Claude is told
+  /// to bias recommendations toward those goals; when both are empty the
+  /// model falls back to inferring goals from the data (current
+  /// behaviour). Free-text `notes` lets the owner attach context the
+  /// audit data alone can't surface (planned launches, seasonal context,
+  /// "we're price-sensitive about ad spend", etc.).
+  goalTags?: readonly string[];
+  goalNotes?: string | null;
 }
 
 export interface Recommendation {
@@ -261,6 +269,18 @@ export async function runAnalysis(
 
   const skillsText = skills.map(skillSystemBlock).join('\n\n');
 
+  const goalTags = (options.goalTags ?? []).filter((t) => typeof t === 'string' && t.trim().length > 0);
+  const goalNotes = options.goalNotes?.trim() ?? '';
+  const ownerGoalsBlock =
+    goalTags.length > 0 || goalNotes.length > 0
+      ? `
+OWNER-SET GOALS — bias your recommendations toward these. inferredGoals in your output should reflect these (you may rewrite them more specifically), not invent unrelated ones.
+${goalTags.length > 0 ? `Selected goal tags: ${goalTags.join(', ')}` : ''}${
+          goalNotes.length > 0 ? `\nOwner notes: ${goalNotes}` : ''
+        }
+`
+      : '';
+
   const response = await anthropic.messages.create({
     model,
     max_tokens: 8000,
@@ -283,7 +303,7 @@ export async function runAnalysis(
         content: `Audit this business's marketing position. The JSON below is the full data snapshot from their POS. Money fields are in MINOR UNITS (paisa for BDT — divide by 100 for taka).
 
 Sales window: last ${salesWindowDays} days.
-
+${ownerGoalsBlock}
 \`\`\`json
 ${JSON.stringify(snapshot, null, 2)}
 \`\`\`

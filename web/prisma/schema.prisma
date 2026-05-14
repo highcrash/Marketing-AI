@@ -42,6 +42,15 @@ model Business {
   /// Plaintext API key for now. Encryption-at-rest is a separate phase
   /// (needs envelope-encryption with a master key).
   apiKey    String
+  /// JSON array of pre-selected goals (e.g. ["acquisition","retention"])
+  /// that the audit pipeline injects into the system prompt so Claude
+  /// tilts recommendations toward what the owner explicitly wants. Empty
+  /// array (default) means "let the model infer goals from the data".
+  goalTags  String   @default("[]")
+  /// Free-text business context the owner wants the audit to consider
+  /// (e.g. "we're opening a second branch in Q3", "Eid week is our
+  /// biggest revenue spike"). Null when never set.
+  goalNotes String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

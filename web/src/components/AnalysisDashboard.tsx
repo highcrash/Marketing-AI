@@ -3,6 +3,7 @@
 import { useState } from 'react';
 
 import { AnalysisView } from './AnalysisView';
+import { GoalsCard } from './GoalsCard';
 import { OperationalStatsCard } from './OperationalStatsCard';
 import type { AnalysisResult } from '@/lib/ai/analyze';
 import type { AnalysisListItem, CompletionsByKey, DraftsByRecIndex } from '@/lib/analyses';
@@ -397,6 +398,8 @@ export function AnalysisDashboard({
             </p>
           </div>
         )}
+
+        <GoalsCard />
 
         <OperationalStatsCard refreshKey={activityRefreshKey} />
 

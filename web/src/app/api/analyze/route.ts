@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 
 import { RestoraClient } from '@/lib/restora-client';
 import { runAnalysis } from '@/lib/ai/analyze';
-import { getOrCreateBusinessFromEnv } from '@/lib/business';
+import { getBusinessGoals, getOrCreateBusinessFromEnv } from '@/lib/business';
 import { saveAnalysis } from '@/lib/analyses';
 
 export const dynamic = 'force-dynamic';
@@ -25,9 +25,12 @@ export async function POST() {
     const business = await getOrCreateBusinessFromEnv();
     const restora = new RestoraClient(business.baseUrl, business.apiKey);
     const anthropic = new Anthropic({ apiKey: anthropicKey });
+    const goals = await getBusinessGoals(business.id);
 
     const result = await runAnalysis(restora, anthropic, {
       model: process.env.ANTHROPIC_MODEL,
+      goalTags: goals.tags,
+      goalNotes: goals.notes,
     });
 
     const analysisId = await saveAnalysis(business.id, result);
