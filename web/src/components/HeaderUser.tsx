@@ -1,7 +1,7 @@
 'use client';
 
 import { signOut, useSession } from 'next-auth/react';
-import { Calendar, LogOut } from 'lucide-react';
+import { Calendar, CheckCircle2, LogOut } from 'lucide-react';
 import Link from 'next/link';
 
 export function HeaderUser() {
@@ -17,6 +17,14 @@ export function HeaderUser() {
       >
         <Calendar size={11} />
         Schedules
+      </Link>
+      <Link
+        href="/completions"
+        className="inline-flex items-center gap-1 px-2 py-1 border border-zinc-200 dark:border-zinc-800 hover:border-emerald-600 hover:text-emerald-600"
+        title="Audit trail of completed pieces"
+      >
+        <CheckCircle2 size={11} />
+        Completions
       </Link>
       <span className="hidden sm:inline">{session.user.email}</span>
       <button
