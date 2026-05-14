@@ -66,25 +66,30 @@ try {
   $tarball = Join-Path $env:TEMP 'marketing-ai-release.tar.gz'
   if (Test-Path $tarball) { Remove-Item $tarball -Force }
   Write-Host '=== packing release.tar.gz ===' -ForegroundColor Cyan
-  Push-Location $stage
-  try {
-    # --strip-components=1 happens at extract time, but the
-    # `web/` leading component is in the archive because that's how
-    # we staged. Move out of `web/` so the tarball has the standalone
-    # tree at its root.
-    if (Test-Path 'web') {
-      Push-Location 'web'
-      try {
-        & tar -czf $tarball .
-        if ($LASTEXITCODE -ne 0) { throw "tar failed ($LASTEXITCODE)" }
-      } finally { Pop-Location }
-    } else {
-      & tar -czf $tarball .
-      if ($LASTEXITCODE -ne 0) { throw "tar failed ($LASTEXITCODE)" }
-    }
-  } finally {
-    Pop-Location
+  # Windows Defender + the just-finished Copy-Item briefly hold a
+  # handle on files in $stage, which makes the first tar invocation
+  # error out with exit 2 (one or more files vanished mid-read).
+  # Retry up to 3 times with backoff before giving up.
+  function Invoke-Tar {
+    param([string]$Workdir, [string]$Tarball)
+    Push-Location $Workdir
+    try {
+      for ($attempt = 1; $attempt -le 3; $attempt++) {
+        if (Test-Path $Tarball) { Remove-Item $Tarball -Force }
+        & tar -czf $Tarball .
+        if ($LASTEXITCODE -eq 0) { return }
+        Write-Warning "tar attempt $attempt failed with exit $LASTEXITCODE; retrying in $($attempt)s"
+        Start-Sleep -Seconds $attempt
+      }
+      throw "tar failed after 3 attempts (exit $LASTEXITCODE)"
+    } finally { Pop-Location }
   }
+
+  # The `web/` leading component is in the archive because that's how
+  # we staged. Move out of `web/` so the tarball has the standalone
+  # tree at its root.
+  $tarRoot = if (Test-Path (Join-Path $stage 'web')) { Join-Path $stage 'web' } else { $stage }
+  Invoke-Tar -Workdir $tarRoot -Tarball $tarball
   $sizeMB = [math]::Round((Get-Item $tarball).Length / 1MB, 1)
   Write-Host "tarball: $tarball ($sizeMB MB)"
 

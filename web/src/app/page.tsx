@@ -1,5 +1,8 @@
+import { AlertTriangle } from 'lucide-react';
+
 import { AnalysisDashboard } from '@/components/AnalysisDashboard';
-import { HeaderUser } from '@/components/HeaderUser';
+import { AppHeader } from '@/components/AppHeader';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { getOrCreateBusinessFromEnv } from '@/lib/business';
 import { getLatestAnalysis, listAnalyses } from '@/lib/analyses';
 
@@ -26,45 +29,41 @@ export default async function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-zinc-50 dark:bg-black text-zinc-900 dark:text-zinc-50">
-      <header className="border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-widest text-red-600 font-medium mb-1">
-                Marketing AI
+    <div className="min-h-screen bg-background text-foreground">
+      <AppHeader />
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        {bootstrap.ok ? (
+          <>
+            <div className="mb-8 space-y-1">
+              <p className="text-[10px] uppercase tracking-[0.3em] text-primary font-medium">
+                Audit & campaigns
               </p>
-              <h1 className="text-2xl font-semibold">
-                {bootstrap.ok ? bootstrap.businessName : 'Marketing AI'}
+              <h1 className="text-3xl font-semibold tracking-tight">
+                {bootstrap.businessName}
               </h1>
-            </div>
-            <div className="flex flex-col items-end gap-3">
-              <HeaderUser />
-              <p className="text-xs text-zinc-500 max-w-md text-right hidden md:block">
+              <p className="text-sm text-muted-foreground max-w-2xl">
                 AI marketing analyst — pulls business data, drafts campaigns, sends through your
                 connected channels.
               </p>
             </div>
-          </div>
-        </div>
-      </header>
-
-      {bootstrap.ok ? (
-        <AnalysisDashboard
-          initialLatest={bootstrap.latest}
-          initialList={bootstrap.list}
-        />
-      ) : (
-        <div className="max-w-3xl mx-auto p-6 mt-12 border border-red-300 bg-red-50 dark:bg-red-950 dark:border-red-800">
-          <p className="text-sm font-medium text-red-700 dark:text-red-300 mb-1">
-            Couldn&apos;t connect a business
-          </p>
-          <p className="text-xs text-red-600 dark:text-red-400 font-mono">{bootstrap.error}</p>
-          <p className="text-xs text-red-600/80 mt-3">
-            Set RESTORA_API_BASE, RESTORA_API_KEY, ANTHROPIC_API_KEY in web/.env, then reload.
-          </p>
-        </div>
-      )}
-    </main>
+            <AnalysisDashboard
+              initialLatest={bootstrap.latest}
+              initialList={bootstrap.list}
+            />
+          </>
+        ) : (
+          <Alert variant="destructive" className="mt-12">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Couldn&apos;t connect a business</AlertTitle>
+            <AlertDescription className="font-mono break-all mt-2">
+              {bootstrap.error}
+              <div className="mt-3 text-xs opacity-80">
+                Set RESTORA_API_BASE, RESTORA_API_KEY, ANTHROPIC_API_KEY in web/.env, then reload.
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+      </main>
+    </div>
   );
 }

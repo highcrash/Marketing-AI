@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { Activity, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 
 import type { HealthStatus } from '@/lib/health';
+import { cn } from '@/lib/utils';
 
 interface SummaryResponse {
   status: HealthStatus;
@@ -11,21 +13,45 @@ interface SummaryResponse {
   issues: Array<{ component: string; message: string }>;
 }
 
-const STATUS_DOT: Record<HealthStatus, { color: string; label: string }> = {
-  ok: { color: 'bg-emerald-500', label: 'All systems OK' },
-  degraded: { color: 'bg-amber-500', label: 'Degraded' },
-  down: { color: 'bg-red-600', label: 'Issue detected' },
-  unknown: { color: 'bg-zinc-400', label: 'Unknown' },
+const STATUS_STYLES: Record<
+  HealthStatus,
+  {
+    label: string;
+    dot: string;
+    text: string;
+    icon: typeof CheckCircle2;
+  }
+> = {
+  ok: {
+    label: 'OK',
+    dot: 'bg-emerald-500 shadow-[0_0_8px_oklch(0.7_0.2_150/0.5)]',
+    text: 'text-emerald-400',
+    icon: CheckCircle2,
+  },
+  degraded: {
+    label: 'Degraded',
+    dot: 'bg-amber-500 shadow-[0_0_8px_oklch(0.75_0.15_85/0.5)]',
+    text: 'text-amber-400',
+    icon: AlertTriangle,
+  },
+  down: {
+    label: 'Issue',
+    dot: 'bg-destructive shadow-[0_0_8px_oklch(0.65_0.25_25/0.5)]',
+    text: 'text-destructive',
+    icon: XCircle,
+  },
+  unknown: {
+    label: '…',
+    dot: 'bg-muted-foreground',
+    text: 'text-muted-foreground',
+    icon: Activity,
+  },
 };
 
-/// Five-minute client poll. The server caches the underlying report
-/// for 60s so multiple tabs share a single Anthropic ping every minute
-/// (~$0.0001 each); 5min × 12 tabs/hr = ~$0.014/hr worst case.
 const POLL_MS = 5 * 60 * 1000;
 
 export function HealthBadge() {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
-  const [hasFailedOnce, setHasFailedOnce] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,7 +62,7 @@ export function HealthBadge() {
         const body = (await res.json()) as SummaryResponse;
         if (!cancelled) setSummary(body);
       } catch {
-        if (!cancelled) setHasFailedOnce(true);
+        if (!cancelled) setSummary(null);
       }
     }
     void fetchOnce();
@@ -47,9 +73,8 @@ export function HealthBadge() {
     };
   }, []);
 
-  // First render: small grey dot until we have data.
-  const status: HealthStatus = summary?.status ?? (hasFailedOnce ? 'unknown' : 'unknown');
-  const style = STATUS_DOT[status];
+  const status: HealthStatus = summary?.status ?? 'unknown';
+  const style = STATUS_STYLES[status];
   const tooltip =
     summary === null
       ? 'Checking health…'
@@ -61,14 +86,15 @@ export function HealthBadge() {
     <Link
       href="/health"
       title={tooltip}
-      className="inline-flex items-center gap-1.5 px-2 py-1 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600"
+      className={cn(
+        'inline-flex items-center gap-2 px-2 py-1 border border-border hover:border-primary transition-colors',
+        'text-[10px] uppercase tracking-widest',
+      )}
     >
-      <span className={`inline-block w-2 h-2 ${style.color}`} aria-hidden />
-      <span className="text-[10px] uppercase tracking-widest">
-        {status === 'ok' ? 'OK' : status === 'down' ? 'Issue' : status === 'degraded' ? 'Degraded' : '…'}
-      </span>
+      <span className={cn('inline-block w-1.5 h-1.5', style.dot)} aria-hidden />
+      <span className={style.text}>{style.label}</span>
       {summary && summary.issues.length > 0 && (
-        <span className="text-[10px] text-zinc-500">· {summary.issues.length}</span>
+        <span className="text-muted-foreground">· {summary.issues.length}</span>
       )}
     </Link>
   );
