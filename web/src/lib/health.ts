@@ -7,12 +7,17 @@
  * parallel so the worst-case wait is bounded by the slowest check.
  */
 
+import { exec as execCb } from 'child_process';
+import { promisify } from 'util';
+
 import Anthropic from '@anthropic-ai/sdk';
 
 import { prisma } from './db';
 import { getOrCreateBusinessFromEnv } from './business';
 import { listConnections } from './facebook';
 import { RestoraClient } from './restora-client';
+
+const exec = promisify(execCb);
 
 export type HealthStatus = 'ok' | 'degraded' | 'down' | 'unknown';
 
@@ -26,12 +31,35 @@ export interface CheckResult {
   detail?: string;
 }
 
+export interface RecentLogEntry {
+  /// ISO timestamp from systemd journal.
+  at: string;
+  /// 'error' for stderr / non-zero exit lines; 'info' for the rest. We
+  /// don't yet parse syslog priority — anything that looks like a stack
+  /// trace, "Error:", or "FAIL" gets bumped to error.
+  level: 'info' | 'error';
+  message: string;
+}
+
 export interface HealthReport {
   generatedAt: string;
   db: CheckResult;
   restora: CheckResult;
   anthropic: CheckResult;
   facebook: Array<CheckResult & { pageId: string; pageName: string; connectionId: string }>;
+  /// Last 30 lines from the systemd journal for the marketing-ai
+  /// service. Empty when journalctl isn't available (local dev on
+  /// Windows / macOS) — the field still ships so the UI can render a
+  /// consistent shape.
+  recentLogs: RecentLogEntry[];
+  /// Backup snapshot health — newest backup age + count. Surfaces when
+  /// /root/backups/marketing-ai stops being written to (cron disabled,
+  /// disk full, etc.). Empty when no backups exist.
+  backups: {
+    count: number;
+    newestAt: string | null;
+    newestAgeHours: number | null;
+  };
 }
 
 async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
@@ -196,6 +224,69 @@ async function checkOneFacebook(connection: {
   }
 }
 
+async function fetchRecentLogs(): Promise<RecentLogEntry[]> {
+  // journalctl is Linux-only; in dev on Windows/macOS this command
+  // never resolves to anything useful, so we early-return.
+  if (process.platform !== 'linux') return [];
+  try {
+    const { stdout } = await exec(
+      'journalctl -u marketing-ai.service --no-pager --lines=30 --output=short-iso 2>/dev/null || true',
+      { timeout: 4_000, maxBuffer: 256 * 1024 },
+    );
+    const lines = stdout
+      .split('\n')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0 && !s.startsWith('--'));
+    return lines.map((line) => {
+      // short-iso prefix: 2026-05-14T02:30:00+0000 host service[pid]: ...
+      const match = line.match(/^(\S+)\s+\S+\s+\S+:\s*(.*)$/);
+      const at = match ? match[1] : new Date().toISOString();
+      const message = match ? match[2] : line;
+      const level: RecentLogEntry['level'] =
+        /\b(error|fail|exception|cannot find module|throw)\b/i.test(message) ? 'error' : 'info';
+      return { at, level, message };
+    });
+  } catch {
+    return [];
+  }
+}
+
+async function fetchBackupSummary(): Promise<HealthReport['backups']> {
+  if (process.platform !== 'linux') {
+    return { count: 0, newestAt: null, newestAgeHours: null };
+  }
+  try {
+    const { stdout } = await exec(
+      "ls -1t /root/backups/marketing-ai/dev-*.db.gz 2>/dev/null | head -200 || true",
+      { timeout: 2_000 },
+    );
+    const files = stdout.split('\n').filter(Boolean);
+    if (files.length === 0) {
+      return { count: 0, newestAt: null, newestAgeHours: null };
+    }
+    // Parse the timestamp out of the newest filename:
+    //   dev-20260514T025205Z.db.gz
+    const newest = files[0];
+    const tsMatch = newest.match(/dev-(\d{8}T\d{6}Z)\.db\.gz$/);
+    let newestAt: string | null = null;
+    let newestAgeHours: number | null = null;
+    if (tsMatch) {
+      const iso = tsMatch[1].replace(
+        /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/,
+        '$1-$2-$3T$4:$5:$6Z',
+      );
+      const d = new Date(iso);
+      if (!Number.isNaN(d.getTime())) {
+        newestAt = d.toISOString();
+        newestAgeHours = Math.round((Date.now() - d.getTime()) / 36e5);
+      }
+    }
+    return { count: files.length, newestAt, newestAgeHours };
+  } catch {
+    return { count: 0, newestAt: null, newestAgeHours: null };
+  }
+}
+
 export async function runHealthCheck(): Promise<HealthReport> {
   // Resolve the business first because the FB check needs it. Doing
   // this serially is fine because the call is local-DB-only.
@@ -212,11 +303,13 @@ export async function runHealthCheck(): Promise<HealthReport> {
     // If we can't resolve the business, leave FB list empty. The other
     // checks will surface the underlying problem.
   }
-  const [db, restora, anthropic, facebook] = await Promise.all([
+  const [db, restora, anthropic, facebook, recentLogs, backups] = await Promise.all([
     checkDb(),
     checkRestora(),
     checkAnthropic(),
     Promise.all(connections.map((c) => checkOneFacebook(c))),
+    fetchRecentLogs(),
+    fetchBackupSummary(),
   ]);
   return {
     generatedAt: new Date().toISOString(),
@@ -224,5 +317,7 @@ export async function runHealthCheck(): Promise<HealthReport> {
     restora,
     anthropic,
     facebook,
+    recentLogs,
+    backups,
   };
 }

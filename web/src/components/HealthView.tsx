@@ -1,9 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Activity, AlertTriangle, CheckCircle2, Database, RefreshCw, XCircle, Zap } from 'lucide-react';
+import { Activity, AlertTriangle, Archive, CheckCircle2, Database, RefreshCw, ScrollText, XCircle, Zap } from 'lucide-react';
 
-import type { CheckResult, HealthReport, HealthStatus } from '@/lib/health';
+import type { CheckResult, HealthReport, HealthStatus, RecentLogEntry } from '@/lib/health';
 import { FacebookIcon } from './icons/FacebookIcon';
 
 const STATUS_STYLES: Record<HealthStatus, { label: string; className: string; Icon: typeof CheckCircle2 }> = {
@@ -102,9 +102,86 @@ export function HealthView() {
               </ul>
             </section>
           )}
+
+          <BackupRow backups={report.backups} />
+
+          {report.recentLogs.length > 0 && <LogsBlock logs={report.recentLogs} />}
         </>
       )}
     </div>
+  );
+}
+
+function BackupRow({ backups }: { backups: HealthReport['backups'] }) {
+  const status: HealthStatus =
+    backups.count === 0
+      ? 'down'
+      : backups.newestAgeHours == null
+      ? 'unknown'
+      : backups.newestAgeHours > 36
+      ? 'degraded'
+      : 'ok';
+  const style = STATUS_STYLES[status];
+  const StatusIcon = style.Icon;
+  const message =
+    backups.count === 0
+      ? 'No SQLite backups on disk — cron may not be installed'
+      : `${backups.count} snapshot${backups.count === 1 ? '' : 's'} kept · newest ${
+          backups.newestAt ? new Date(backups.newestAt).toLocaleString() : 'unknown'
+        }${backups.newestAgeHours != null ? ` (${backups.newestAgeHours}h ago)` : ''}`;
+  return (
+    <section className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2 min-w-0 flex-1">
+          <Archive size={14} className="text-zinc-500 mt-0.5 flex-shrink-0" />
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+              SQLite backups
+            </div>
+            <div className="text-[11px] text-zinc-500 mt-0.5 break-words">{message}</div>
+          </div>
+        </div>
+        <span
+          className={`inline-flex items-center gap-1 text-[10px] uppercase tracking-wider px-1.5 py-0.5 flex-shrink-0 ${style.className}`}
+        >
+          <StatusIcon size={10} />
+          {style.label}
+        </span>
+      </div>
+    </section>
+  );
+}
+
+function LogsBlock({ logs }: { logs: RecentLogEntry[] }) {
+  return (
+    <section className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
+      <header className="flex items-center gap-2 px-4 py-3 border-b border-zinc-100 dark:border-zinc-900">
+        <ScrollText size={14} className="text-zinc-500" />
+        <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-600 dark:text-zinc-400">
+          Recent service logs
+        </h2>
+        <span className="text-[10px] text-zinc-500 ml-auto">
+          last {logs.length} lines · journalctl -u marketing-ai.service
+        </span>
+      </header>
+      <ol className="max-h-72 overflow-y-auto divide-y divide-zinc-100 dark:divide-zinc-900 font-mono text-[11px]">
+        {logs.map((l, i) => (
+          <li
+            key={`${l.at}-${i}`}
+            className={`px-4 py-1.5 flex items-start gap-3 ${
+              l.level === 'error'
+                ? 'text-red-700 dark:text-red-300 bg-red-50/40 dark:bg-red-950/20'
+                : 'text-zinc-700 dark:text-zinc-300'
+            }`}
+          >
+            <span className="text-zinc-400 flex-shrink-0">
+              {new Date(l.at).toLocaleTimeString()}
+            </span>
+            <span className="break-all whitespace-pre-wrap">{l.message}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }
 
