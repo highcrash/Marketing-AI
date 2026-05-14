@@ -1,11 +1,20 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ExternalLink, Send, X } from 'lucide-react';
+import { Clock, ExternalLink, Send, X } from 'lucide-react';
 import Link from 'next/link';
 
 import type { FacebookConnectionRow, FacebookPostEventRow } from '@/lib/facebook';
 import { FacebookIcon } from './icons/FacebookIcon';
+
+/// Returns "YYYY-MM-DDThh:mm" exactly 1h from now, in local time, in the
+/// shape the <input type="datetime-local"> control expects. Used as the
+/// default value when the user opens the schedule form.
+function defaultScheduleAt(): string {
+  const d = new Date(Date.now() + 60 * 60 * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 interface ConnectionsResponse {
   connections: FacebookConnectionRow[];
@@ -38,6 +47,13 @@ export function FacebookPostPanel({
   const [posting, setPosting] = useState(false);
   const [result, setResult] = useState<FacebookPostEventRow | null>(null);
   const [postError, setPostError] = useState<string | null>(null);
+  /// Post mode: 'now' publishes immediately via /api/facebook/post,
+  /// 'later' creates a ScheduledSend row that the scheduler tick picks
+  /// up via /api/drafts/:id/schedule.
+  const [mode, setMode] = useState<'now' | 'later'>('now');
+  const [scheduleAt, setScheduleAt] = useState(defaultScheduleAt);
+  const [scheduling, setScheduling] = useState(false);
+  const [scheduleResult, setScheduleResult] = useState<{ id: string; scheduledAt: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,6 +113,51 @@ export function FacebookPostPanel({
       setPostError(err instanceof Error ? err.message : 'unknown error');
     } finally {
       setPosting(false);
+    }
+  }
+
+  async function schedule() {
+    if (!selectedId) return;
+    const trimmed = body.trim();
+    if (trimmed.length === 0) return;
+    const when = new Date(scheduleAt);
+    if (Number.isNaN(when.getTime())) {
+      setPostError('Pick a valid date/time');
+      return;
+    }
+    setScheduling(true);
+    setPostError(null);
+    setScheduleResult(null);
+    try {
+      const res = await fetch(`/api/drafts/${encodeURIComponent(draftId)}/schedule`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pieceIndex,
+          kind: 'fb-post',
+          scheduledAt: when.toISOString(),
+          config: {
+            connectionId: selectedId,
+            body: trimmed,
+          },
+        }),
+      });
+      const json = (await res.json()) as {
+        scheduled?: { id: string; scheduledAt: string };
+        error?: string;
+        message?: string;
+      };
+      if (!res.ok || json.error) {
+        throw new Error(json.message ?? `HTTP ${res.status}`);
+      }
+      if (json.scheduled) {
+        setScheduleResult(json.scheduled);
+        onPosted();
+      }
+    } catch (err: unknown) {
+      setPostError(err instanceof Error ? err.message : 'unknown error');
+    } finally {
+      setScheduling(false);
     }
   }
 
@@ -180,24 +241,85 @@ export function FacebookPostPanel({
               )}
             </div>
           </label>
+          <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest">
+            <button
+              type="button"
+              onClick={() => setMode('now')}
+              className={`px-2 py-1 border ${
+                mode === 'now'
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800'
+              }`}
+            >
+              Post now
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('later')}
+              className={`px-2 py-1 border inline-flex items-center gap-1 ${
+                mode === 'later'
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800'
+              }`}
+            >
+              <Clock size={10} />
+              Schedule for later
+            </button>
+          </div>
+          {mode === 'later' && (
+            <label className="block">
+              <span className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1 block">
+                Fire at
+              </span>
+              <input
+                type="datetime-local"
+                value={scheduleAt}
+                onChange={(e) => setScheduleAt(e.target.value)}
+                disabled={scheduling}
+                className="bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 focus:outline-none focus:border-blue-600"
+              />
+            </label>
+          )}
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-zinc-500">
-              Publishes immediately to the selected page
+              {mode === 'now'
+                ? 'Publishes immediately to the selected page'
+                : 'Queued — the scheduler fires it at the chosen time (only while the draft is APPROVED)'}
             </span>
-            <button
-              onClick={submit}
-              disabled={posting || !selectedId || body.trim().length === 0}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
-            >
-              <Send size={11} />
-              {posting ? 'Posting…' : 'Post to Facebook'}
-            </button>
+            {mode === 'now' ? (
+              <button
+                onClick={submit}
+                disabled={posting || !selectedId || body.trim().length === 0}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
+              >
+                <Send size={11} />
+                {posting ? 'Posting…' : 'Post to Facebook'}
+              </button>
+            ) : (
+              <button
+                onClick={schedule}
+                disabled={scheduling || !selectedId || body.trim().length === 0}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
+              >
+                <Clock size={11} />
+                {scheduling ? 'Scheduling…' : 'Schedule post'}
+              </button>
+            )}
           </div>
         </>
       )}
 
       {postError && (
         <p className="text-xs text-red-600 dark:text-red-400 font-mono break-all">{postError}</p>
+      )}
+
+      {scheduleResult && (
+        <div className="px-3 py-2 text-[11px] font-mono border text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900">
+          <span className="font-medium">⧖ Scheduled</span>
+          <span className="ml-2">
+            fires {new Date(scheduleResult.scheduledAt).toLocaleString()} · id {scheduleResult.id}
+          </span>
+        </div>
       )}
 
       {result && (

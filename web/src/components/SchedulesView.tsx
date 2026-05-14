@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Pause, Play, Repeat, SkipForward, Trash2 } from 'lucide-react';
 
-import type { ScheduledBlastConfig, ScheduledSendRow, ScheduledSingleConfig } from '@/lib/scheduled-sends';
+import type {
+  ScheduledBlastConfig,
+  ScheduledFacebookPostConfig,
+  ScheduledSendRow,
+  ScheduledSingleConfig,
+} from '@/lib/scheduled-sends';
 import type { RecurringScheduleRow } from '@/lib/recurring-schedules';
 import type { ScheduleListItem } from '@/lib/all-schedules';
 
@@ -12,17 +17,24 @@ type Recurring = RecurringScheduleRow & ScheduleListItem;
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
-function summarise(cfg: ScheduledSingleConfig | ScheduledBlastConfig, kind: 'single' | 'blast'): string {
-  if (kind === 'single') return `→ ${(cfg as ScheduledSingleConfig).phone}`;
+function summarise(
+  cfg: ScheduledSingleConfig | ScheduledBlastConfig | ScheduledFacebookPostConfig,
+  kind: 'single' | 'blast' | 'fb-post',
+): string {
+  if (kind === 'single') return `SMS → ${(cfg as ScheduledSingleConfig).phone}`;
+  if (kind === 'fb-post') {
+    const fbCfg = cfg as ScheduledFacebookPostConfig;
+    return `Facebook → connection ${fbCfg.connectionId.slice(0, 8)}…`;
+  }
   const segCfg = cfg as ScheduledBlastConfig;
   const filterKeys = Object.keys(segCfg.segment).filter((k) => segCfg.segment[k as keyof typeof segCfg.segment] != null);
-  if (filterKeys.length === 0) return '→ all customers';
+  if (filterKeys.length === 0) return 'SMS → all customers';
   const parts: string[] = [];
   if (segCfg.segment.minSpent != null) parts.push(`spend≥৳${segCfg.segment.minSpent}`);
   if (segCfg.segment.minVisits != null) parts.push(`visits≥${segCfg.segment.minVisits}`);
   if (segCfg.segment.maxLastVisitDays != null) parts.push(`within ${segCfg.segment.maxLastVisitDays}d`);
   if (segCfg.segment.minLoyaltyPoints != null) parts.push(`pts≥${segCfg.segment.minLoyaltyPoints}`);
-  return `→ ${parts.join(' · ')}`;
+  return `SMS → ${parts.join(' · ')}`;
 }
 
 export function SchedulesView() {

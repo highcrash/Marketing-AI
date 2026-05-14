@@ -1,7 +1,7 @@
 import { prisma } from './db';
 import type { BlastSegmentFilter } from './sms-blasts';
 
-export type ScheduledKind = 'single' | 'blast';
+export type ScheduledKind = 'single' | 'blast' | 'fb-post';
 
 export interface ScheduledSingleConfig {
   phone: string;
@@ -20,7 +20,19 @@ export interface ScheduledBlastConfig {
   body?: string | null;
 }
 
-export type ScheduledConfig = ScheduledSingleConfig | ScheduledBlastConfig;
+/// Scheduled Facebook page post. The `connectionId` references a
+/// FacebookConnection row that still has an active token at fire time —
+/// the scheduler skips the row if the connection is gone or marked
+/// inactive (token rejected).
+export interface ScheduledFacebookPostConfig {
+  connectionId: string;
+  body?: string | null;
+}
+
+export type ScheduledConfig =
+  | ScheduledSingleConfig
+  | ScheduledBlastConfig
+  | ScheduledFacebookPostConfig;
 
 export interface ScheduledSendRow {
   id: string;

@@ -53,6 +53,14 @@ function parseConfig(kind: string, raw: unknown): ScheduledConfig | null {
         : null;
     return { segment: filter, campaignTag, body };
   }
+  if (kind === 'fb-post') {
+    const connectionId =
+      typeof obj.connectionId === 'string' && obj.connectionId.trim().length > 0
+        ? obj.connectionId.trim()
+        : null;
+    if (!connectionId) return null;
+    return { connectionId, body };
+  }
   return null;
 }
 
@@ -61,12 +69,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const body = (await req.json().catch(() => ({}))) as PostBody;
 
   const pieceIndex = typeof body.pieceIndex === 'number' ? body.pieceIndex : null;
-  const kind = body.kind === 'single' || body.kind === 'blast' ? body.kind : null;
+  const kind =
+    body.kind === 'single' || body.kind === 'blast' || body.kind === 'fb-post' ? body.kind : null;
   const scheduledAtStr = typeof body.scheduledAt === 'string' ? body.scheduledAt : null;
 
   if (pieceIndex == null || pieceIndex < 0 || !kind || !scheduledAtStr) {
     return NextResponse.json(
-      { error: 'bad_request', message: 'pieceIndex, kind (single|blast), scheduledAt required' },
+      { error: 'bad_request', message: 'pieceIndex, kind (single|blast|fb-post), scheduledAt required' },
       { status: 400 },
     );
   }
@@ -114,11 +123,28 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       );
     }
     const piece = draft.payload.pieces[pieceIndex];
-    if (!piece || piece.assetType !== 'sms') {
+    if (!piece) {
+      return NextResponse.json(
+        { error: 'bad_piece', message: 'pieceIndex out of range' },
+        { status: 400 },
+      );
+    }
+    if ((kind === 'single' || kind === 'blast') && piece.assetType !== 'sms') {
       return NextResponse.json(
         { error: 'bad_piece', message: 'pieceIndex does not point to an SMS piece' },
         { status: 400 },
       );
+    }
+    if (kind === 'fb-post') {
+      const isFb =
+        piece.channel.toLowerCase() === 'facebook' &&
+        (piece.assetType === 'social-post' || piece.assetType === 'paid-ad-copy');
+      if (!isFb) {
+        return NextResponse.json(
+          { error: 'bad_piece', message: 'pieceIndex must be a Facebook social-post or ad-copy piece' },
+          { status: 400 },
+        );
+      }
     }
 
     const scheduled = await createScheduledSend({

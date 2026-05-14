@@ -21,16 +21,38 @@
 
 import { getOrCreateBusinessFromEnv } from './business';
 import { executeSingleSmsSend, executeSmsBlast } from './execute-sends';
+import { publishPost } from './facebook';
 import {
   claimDueScheduledSends,
   markScheduledComplete,
   markScheduledFailed,
   markScheduledSkipped,
   type ScheduledBlastConfig,
+  type ScheduledFacebookPostConfig,
   type ScheduledSingleConfig,
 } from './scheduled-sends';
 import { listDueRecurring, markRecurringFired } from './recurring-schedules';
 import { prisma } from './db';
+
+/// Resolve a piece's canonical body from its draft payload. Used by
+/// scheduled fb-post fires that don't have a body override captured at
+/// schedule time. Returns null if the piece can't be resolved — the
+/// caller should fall back to the empty string (Graph will reject the
+/// post and we'll persist a FAILED row).
+async function getPieceContent(draftId: string, pieceIndex: number): Promise<string | null> {
+  const draft = await prisma.campaignDraft.findUnique({
+    where: { id: draftId },
+    select: { payload: true },
+  });
+  if (!draft) return null;
+  try {
+    const payload = JSON.parse(draft.payload) as { pieces?: Array<{ content?: string }> };
+    const piece = payload.pieces?.[pieceIndex];
+    return piece?.content ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /// Run one tick: claim due rows, execute each, persist results. Returns
 /// the number of rows fired this tick (for logging / monitoring).
@@ -88,6 +110,7 @@ export async function runSchedulerTick(): Promise<{ fired: number; failed: numbe
             pieceIndex: r.pieceIndex,
             phone: cfg.phone,
             campaignTag: cfg.campaignTag ?? null,
+            bodyOverride: cfg.body ?? null,
           });
         } else if (r.kind === 'blast') {
           const cfg = r.config as ScheduledBlastConfig;
@@ -97,6 +120,17 @@ export async function runSchedulerTick(): Promise<{ fired: number; failed: numbe
             pieceIndex: r.pieceIndex,
             segment: cfg.segment,
             campaignTag: cfg.campaignTag ?? null,
+            bodyOverride: cfg.body ?? null,
+          });
+        } else if (r.kind === 'fb-post') {
+          const cfg = r.config as ScheduledFacebookPostConfig;
+          const piece = await getPieceContent(r.draftId, r.pieceIndex);
+          await publishPost({
+            businessId: business.id,
+            connectionId: cfg.connectionId,
+            message: cfg.body ?? piece ?? '',
+            draftId: r.draftId,
+            pieceIndex: r.pieceIndex,
           });
         } else {
           throw new Error(`Unknown recurring kind: ${r.kind as string}`);
@@ -154,6 +188,18 @@ export async function runSchedulerTick(): Promise<{ fired: number; failed: numbe
             segment: cfg.segment,
             campaignTag: cfg.campaignTag ?? null,
             bodyOverride: cfg.body ?? null,
+          });
+          await markScheduledComplete(row.id, result);
+          fired += 1;
+        } else if (row.kind === 'fb-post') {
+          const cfg = row.config as ScheduledFacebookPostConfig;
+          const piece = await getPieceContent(row.draftId, row.pieceIndex);
+          const result = await publishPost({
+            businessId: business.id,
+            connectionId: cfg.connectionId,
+            message: cfg.body ?? piece ?? '',
+            draftId: row.draftId,
+            pieceIndex: row.pieceIndex,
           });
           await markScheduledComplete(row.id, result);
           fired += 1;
