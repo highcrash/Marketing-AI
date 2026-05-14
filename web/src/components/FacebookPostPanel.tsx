@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Clock, ExternalLink, Image as ImageIcon, Repeat, Send, Type, Upload, Video, X } from 'lucide-react';
+import { Clock, ExternalLink, Image as ImageIcon, Repeat, Send, Sparkles, Type, Upload, Video, X } from 'lucide-react';
 import Link from 'next/link';
 
 import type { FacebookConnectionRow, FacebookPostEventRow } from '@/lib/facebook';
 import { FacebookIcon } from './icons/FacebookIcon';
+import { ImageGenerationDialog } from './ImageGenerationDialog';
 
 type MediaKind = 'text' | 'photo' | 'reel';
 
@@ -86,6 +87,7 @@ export function FacebookPostPanel({
   const [mediaUrl, setMediaUrl] = useState<string>('');
   const [mediaAbsoluteUrl, setMediaAbsoluteUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [showGenerate, setShowGenerate] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -479,6 +481,18 @@ export function FacebookPostPanel({
                   <Upload size={11} />
                   {uploading ? 'Uploading…' : 'Upload file'}
                 </button>
+                {mediaKind === 'photo' && (
+                  <button
+                    type="button"
+                    onClick={() => setShowGenerate(true)}
+                    disabled={posting || uploading}
+                    className="inline-flex items-center gap-1 text-[10px] tracking-widest uppercase text-primary hover:text-accent disabled:opacity-50 px-2 py-1.5 border border-primary"
+                    title="Generate an image with AI (requires OPENAI_API_KEY)"
+                  >
+                    <Sparkles size={11} />
+                    Generate
+                  </button>
+                )}
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -682,6 +696,17 @@ export function FacebookPostPanel({
           )}
         </div>
       )}
+
+      <ImageGenerationDialog
+        open={showGenerate}
+        onOpenChange={setShowGenerate}
+        promptSeed={`Image to accompany this Facebook post:\n\n${body.slice(0, 600)}`}
+        intent={mediaKind === 'reel' ? 'reel' : 'photo'}
+        onPick={(url, publicPath) => {
+          setMediaUrl(publicPath);
+          setMediaAbsoluteUrl(url.startsWith('http') ? url : null);
+        }}
+      />
     </div>
   );
 }

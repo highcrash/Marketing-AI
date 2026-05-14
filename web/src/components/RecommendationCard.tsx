@@ -59,6 +59,7 @@ export function RecommendationCard({
     pieceIndex: number,
     currentlyComplete: boolean,
     notes?: string | null,
+    attachment?: { path: string; name: string; mime: string; size: number } | null,
   ) => void;
 }) {
   const progress = computeRecStatus(draft, completionsByPiece);

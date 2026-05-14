@@ -239,6 +239,7 @@ export function AnalysisDashboard({
     pieceIndex: number,
     currentlyComplete: boolean,
     notes?: string | null,
+    attachment?: { path: string; name: string; mime: string; size: number } | null,
   ) {
     const key = `${draftId}:${pieceIndex}`;
     if (togglingCompletionKey !== null) return;
@@ -252,7 +253,13 @@ export function AnalysisDashboard({
         {
           method,
           headers: { 'Content-Type': 'application/json' },
-          body: method === 'POST' ? JSON.stringify({ notes: trimmedNotes }) : undefined,
+          body:
+            method === 'POST'
+              ? JSON.stringify({
+                  notes: trimmedNotes,
+                  attachment: attachment ?? undefined,
+                })
+              : undefined,
         },
       );
       if (!res.ok) {
@@ -271,7 +278,7 @@ export function AnalysisDashboard({
             pieceIndex,
             notes: trimmedNotes,
             source: 'manual',
-            attachment: null,
+            attachment: attachment ?? null,
             completedAt: new Date().toISOString(),
           };
         }

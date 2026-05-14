@@ -63,6 +63,7 @@ interface AnalysisViewProps {
     pieceIndex: number,
     currentlyComplete: boolean,
     notes?: string | null,
+    attachment?: { path: string; name: string; mime: string; size: number } | null,
   ) => void;
 }
 
@@ -360,8 +361,15 @@ export function AnalysisView({
                       draft && onSendSms(draft.id, pieceIndex, phone, bodyOverride)
                     }
                     onSegmentBlastSent={onSegmentBlastSent}
-                    onToggleCompletion={(pieceIndex, currentlyComplete, notes) =>
-                      draft && onToggleCompletion(draft.id, pieceIndex, currentlyComplete, notes)
+                    onToggleCompletion={(pieceIndex, currentlyComplete, notes, attachment) =>
+                      draft &&
+                      onToggleCompletion(
+                        draft.id,
+                        pieceIndex,
+                        currentlyComplete,
+                        notes,
+                        attachment,
+                      )
                     }
                   />
                 );

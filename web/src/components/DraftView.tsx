@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
-import { Check, CheckCircle2, Circle, Clock, Copy, Pencil, RotateCcw, Save, Send, Sparkles, Users, X } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Check, CheckCircle2, Circle, Clock, Copy, Loader2, Paperclip, Pencil, RotateCcw, Save, Send, Sparkles, Trash2, Upload, Users, X } from 'lucide-react';
 
 import type { DraftPiece } from '@/lib/ai/draft';
 import type { DraftRow } from '@/lib/drafts';
 import type { PieceCompletionRow } from '@/lib/piece-completions';
 import type { SmsSendRow } from '@/lib/sms-sends';
 import { FacebookIcon } from './icons/FacebookIcon';
+import { CampaignCodePanel } from './CampaignCodePanel';
 import { FacebookPostPanel } from './FacebookPostPanel';
 import { SegmentBlastPanel } from './SegmentBlastPanel';
 import { SchedulePanel } from './SchedulePanel';
@@ -79,6 +80,7 @@ export function DraftView({
     pieceIndex: number,
     currentlyComplete: boolean,
     notes?: string | null,
+    attachment?: { path: string; name: string; mime: string; size: number } | null,
   ) => void;
 }) {
   const canSendSms = draft.status === 'APPROVED';
@@ -163,8 +165,8 @@ export function DraftView({
               draftId={draft.id}
               onSendSms={(phone, body) => onSendSms(i, phone, body)}
               onSegmentBlastSent={onSegmentBlastSent}
-              onToggleCompletion={(currentlyComplete, notes) =>
-                onToggleCompletion(i, currentlyComplete, notes)
+              onToggleCompletion={(currentlyComplete, notes, attachment) =>
+                onToggleCompletion(i, currentlyComplete, notes, attachment)
               }
             />
           ))}
@@ -348,7 +350,11 @@ function PieceCard({
   draftId: string;
   onSendSms: (phone: string, bodyOverride: string | null) => void;
   onSegmentBlastSent: () => void;
-  onToggleCompletion: (currentlyComplete: boolean, notes?: string | null) => void;
+  onToggleCompletion: (
+    currentlyComplete: boolean,
+    notes?: string | null,
+    attachment?: { path: string; name: string; mime: string; size: number } | null,
+  ) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [showSendForm, setShowSendForm] = useState(false);
@@ -375,6 +381,15 @@ function PieceCard({
   /// already-complete piece.
   const [showCompletionForm, setShowCompletionForm] = useState(false);
   const [completionNotes, setCompletionNotes] = useState('');
+  /// Optional proof-of-work file uploaded alongside the completion
+  /// (screenshot of an externally-sent SMS, receipt for printed cards,
+  /// photo of the in-store campaign, etc.). null = no attachment.
+  const [completionAttachment, setCompletionAttachment] = useState<
+    { path: string; name: string; mime: string; size: number } | null
+  >(null);
+  const [uploadingProof, setUploadingProof] = useState(false);
+  const [proofError, setProofError] = useState<string | null>(null);
+  const proofInputRef = useRef<HTMLInputElement | null>(null);
   /// Inline piece-content editor. Lets the user fix typos / tweak copy
   /// without burning a Claude refine. Persists to the draft payload in
   /// place — historical sends keep their locked body, the UI shows the
@@ -418,23 +433,61 @@ function PieceCard({
 
   function submitCompletion() {
     const trimmed = completionNotes.trim();
-    onToggleCompletion(false, trimmed.length > 0 ? trimmed : null);
+    onToggleCompletion(false, trimmed.length > 0 ? trimmed : null, completionAttachment);
     setShowCompletionForm(false);
     setCompletionNotes('');
+    setCompletionAttachment(null);
+    setProofError(null);
   }
 
   function openEditNotes() {
     setCompletionNotes(completion?.notes ?? '');
+    setCompletionAttachment(completion?.attachment ?? null);
+    setProofError(null);
     setShowCompletionForm(true);
   }
 
   function saveEditedNotes() {
     // Editing an existing completion: re-submit the mark call with new
-    // notes. The server-side upsert updates the row in place.
+    // notes + attachment. The server-side upsert updates the row in
+    // place.
     const trimmed = completionNotes.trim();
-    onToggleCompletion(false, trimmed.length > 0 ? trimmed : null);
+    onToggleCompletion(false, trimmed.length > 0 ? trimmed : null, completionAttachment);
     setShowCompletionForm(false);
     setCompletionNotes('');
+    setCompletionAttachment(null);
+    setProofError(null);
+  }
+
+  async function handleProofUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingProof(true);
+    setProofError(null);
+    try {
+      const fd = new FormData();
+      fd.set('file', file);
+      const res = await fetch('/api/uploads', { method: 'POST', body: fd });
+      const body = (await res.json()) as {
+        upload?: { publicPath: string; size: number };
+        error?: string;
+        message?: string;
+      };
+      if (!res.ok || body.error || !body.upload) {
+        throw new Error(body.message ?? `HTTP ${res.status}`);
+      }
+      setCompletionAttachment({
+        path: body.upload.publicPath,
+        name: file.name.slice(0, 200),
+        mime: file.type || 'application/octet-stream',
+        size: body.upload.size,
+      });
+    } catch (err: unknown) {
+      setProofError(err instanceof Error ? err.message : 'unknown error');
+    } finally {
+      setUploadingProof(false);
+      if (proofInputRef.current) proofInputRef.current.value = '';
+    }
   }
 
   function openEditPiece() {
@@ -704,6 +757,18 @@ function PieceCard({
               {completion.notes}
             </p>
           )}
+          {completion.attachment && (
+            <a
+              href={completion.attachment.path}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] text-primary hover:text-accent underline-offset-2 hover:underline"
+              title={`${completion.attachment.mime} · ${(completion.attachment.size / 1024).toFixed(0)} KB`}
+            >
+              <Paperclip className="h-3 w-3" />
+              {completion.attachment.name}
+            </a>
+          )}
         </div>
       )}
 
@@ -743,6 +808,48 @@ function PieceCard({
               }
             }}
           />
+          {/* Proof-of-work attachment row */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {completionAttachment ? (
+              <div className="flex items-center gap-2 px-2 py-1 bg-card border border-border text-[11px]">
+                <Paperclip className="h-3 w-3 text-primary" />
+                <span className="font-mono truncate max-w-[200px]" title={completionAttachment.name}>
+                  {completionAttachment.name}
+                </span>
+                <span className="text-muted-foreground">
+                  · {(completionAttachment.size / 1024).toFixed(0)} KB
+                </span>
+                <button
+                  onClick={() => setCompletionAttachment(null)}
+                  className="text-muted-foreground hover:text-destructive"
+                  title="Remove"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => proofInputRef.current?.click()}
+                disabled={uploadingProof || isTogglingCompletion}
+                className="inline-flex items-center gap-1 text-[10px] tracking-widest uppercase text-muted-foreground hover:text-primary border border-border px-2 py-1 disabled:opacity-50"
+              >
+                {uploadingProof ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+                {uploadingProof ? 'Uploading' : 'Attach proof'}
+              </button>
+            )}
+            <input
+              ref={proofInputRef}
+              type="file"
+              accept="image/*,application/pdf,video/mp4"
+              onChange={handleProofUpload}
+              className="hidden"
+            />
+            {proofError && (
+              <span className="text-[10px] text-destructive font-mono break-all">{proofError}</span>
+            )}
+          </div>
+
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-muted-foreground">
               ⌘/Ctrl + Enter · {completionNotes.length}/500
@@ -750,7 +857,7 @@ function PieceCard({
             <button
               onClick={isComplete ? saveEditedNotes : submitCompletion}
               disabled={isTogglingCompletion}
-              className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-300 disabled:text-muted-foreground dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
+              className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-muted disabled:text-muted-foreground text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
             >
               <Check size={11} />
               {isTogglingCompletion
@@ -865,6 +972,13 @@ function PieceCard({
           onClose={() => setShowFacebookForm(false)}
           onPosted={onSegmentBlastSent}
         />
+      )}
+
+      {/* Campaign-code attribution: shown on send-capable pieces so the
+          owner can mint a code that goes into the SMS/social body and
+          track redemptions back. Hidden on pure brief/visual pieces. */}
+      {(isSmsPiece || isFacebookPiece) && (
+        <CampaignCodePanel draftId={draftId} pieceIndex={pieceIndex} />
       )}
     </div>
   );
