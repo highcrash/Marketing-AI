@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
+  AlertCircle,
   Check,
   CheckCircle2,
   FileText,
@@ -15,6 +16,11 @@ import {
 import type { AnalysisResult } from '@/lib/ai/analyze';
 import type { DraftsByRecIndex } from '@/lib/analyses';
 import type { ActivityItem } from '@/lib/activity';
+
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 
 interface Stats {
   totalRecs: number;
@@ -45,8 +51,8 @@ function computeStats(result: AnalysisResult, drafts: DraftsByRecIndex): Stats {
 const TONE_BORDER: Record<NonNullable<ActivityItem['tone']>, string> = {
   success: 'border-l-emerald-500',
   warning: 'border-l-amber-500',
-  info: 'border-l-zinc-400 dark:border-l-zinc-600',
-  danger: 'border-l-red-500',
+  info: 'border-l-primary',
+  danger: 'border-l-destructive',
 };
 
 const KIND_ICON = {
@@ -62,8 +68,6 @@ export function ActivityPanel({
   analysisId,
   result,
   drafts,
-  /// Bumped by the parent whenever a state-changing action completes,
-  /// triggering a re-fetch.
   refreshKey,
 }: {
   analysisId: string;
@@ -109,23 +113,19 @@ export function ActivityPanel({
   const sentSomething = items.some((i) => i.kind === 'send' || i.kind === 'blast');
 
   return (
-    <section className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-5 space-y-5">
-      <div>
-        <h3 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-3">
+    <Card>
+      <CardHeader className="py-4">
+        <CardTitle className="text-sm uppercase tracking-widest text-muted-foreground font-semibold">
           Status
-        </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <Stat label="Recommendations" value={stats.totalRecs} />
           <Stat
             label="Drafted"
             value={`${stats.draftedRecs} / ${stats.totalRecs}`}
-            hint={
-              stats.draftedRecs === stats.totalRecs
-                ? 'all'
-                : stats.draftedRecs === 0
-                ? ' '
-                : ''
-            }
+            tone={stats.draftedRecs === stats.totalRecs ? 'success' : undefined}
           />
           <Stat
             label="Pending review"
@@ -144,92 +144,95 @@ export function ActivityPanel({
           />
         </div>
         {!sentSomething && stats.approvedDrafts > 0 && !loading && (
-          <p className="mt-3 text-[11px] text-zinc-500">
+          <p className="text-[11px] text-muted-foreground">
             {stats.approvedDrafts} approved draft{stats.approvedDrafts === 1 ? '' : 's'} hasn&apos;t
             been sent yet. Scroll to find them and use the Send buttons on SMS pieces.
           </p>
         )}
-      </div>
 
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold uppercase tracking-widest text-zinc-500">
-            Recent activity
-          </h3>
-          {items.length > 6 && (
-            <button
-              onClick={() => setExpanded((v) => !v)}
-              className="text-[10px] tracking-widest uppercase text-zinc-500 hover:text-red-600"
-            >
-              {expanded ? 'Show recent' : `Show all (${items.length})`}
-            </button>
+        <Separator />
+
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm uppercase tracking-widest text-muted-foreground font-semibold">
+              Recent activity
+            </h3>
+            {items.length > 6 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setExpanded((v) => !v)}
+                className="h-7"
+              >
+                {expanded ? 'Show recent' : `Show all (${items.length})`}
+              </Button>
+            )}
+          </div>
+
+          {loading ? (
+            <p className="text-xs text-muted-foreground">Loading…</p>
+          ) : error ? (
+            <p className="text-xs text-destructive font-mono break-all">{error}</p>
+          ) : items.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Nothing has happened in this analysis yet. Draft a recommendation to get started.
+            </p>
+          ) : (
+            <ol className="space-y-1.5">
+              {showItems.map((item, i) => {
+                const Icon = KIND_ICON[item.kind] ?? MessageSquare;
+                const border = TONE_BORDER[item.tone ?? 'info'];
+                return (
+                  <li
+                    key={`${item.at}-${i}`}
+                    className={cn('flex items-start gap-2 border-l-2 pl-3 py-1 text-[12px]', border)}
+                  >
+                    <Icon className="h-3 w-3 text-muted-foreground mt-1 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-foreground">
+                        <span className="font-medium text-primary">#{item.recIndex + 1}</span>{' '}
+                        <span className="text-muted-foreground">·</span>{' '}
+                        <span className="break-words">{item.summary}</span>
+                      </div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                        {new Date(item.at).toLocaleString()} ·{' '}
+                        <span className="italic">{item.recTitle}</span>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
           )}
         </div>
-
-        {loading ? (
-          <p className="text-xs text-zinc-500">Loading…</p>
-        ) : error ? (
-          <p className="text-xs text-red-600 dark:text-red-400 font-mono break-all">{error}</p>
-        ) : items.length === 0 ? (
-          <p className="text-xs text-zinc-500">
-            Nothing has happened in this analysis yet. Draft a recommendation to get started.
-          </p>
-        ) : (
-          <ol className="space-y-1.5">
-            {showItems.map((item, i) => {
-              const Icon = KIND_ICON[item.kind] ?? MessageSquare;
-              const border = TONE_BORDER[item.tone ?? 'info'];
-              return (
-                <li
-                  key={`${item.at}-${i}`}
-                  className={`flex items-start gap-2 border-l-2 ${border} pl-3 py-1 text-[12px]`}
-                >
-                  <Icon size={12} className="text-zinc-500 mt-0.5 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-zinc-700 dark:text-zinc-300">
-                      <span className="font-medium">#{item.recIndex + 1}</span>{' '}
-                      <span className="text-zinc-500">·</span>{' '}
-                      <span className="break-words">{item.summary}</span>
-                    </div>
-                    <div className="text-[10px] text-zinc-500 mt-0.5 truncate">
-                      {new Date(item.at).toLocaleString()} ·{' '}
-                      <span className="italic">{item.recTitle}</span>
-                    </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
-        )}
-      </div>
-    </section>
+      </CardContent>
+    </Card>
   );
 }
 
 function Stat({
   label,
   value,
-  hint,
   tone,
 }: {
   label: string;
   value: number | string;
-  hint?: string;
   tone?: 'success' | 'warning' | 'danger';
 }) {
-  const valueColor =
-    tone === 'success'
-      ? 'text-emerald-600 dark:text-emerald-400'
-      : tone === 'warning'
-      ? 'text-amber-600 dark:text-amber-400'
-      : tone === 'danger'
-      ? 'text-red-600 dark:text-red-400'
-      : 'text-zinc-800 dark:text-zinc-200';
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-widest text-zinc-500">{label}</div>
-      <div className={`text-lg font-semibold ${valueColor}`}>{value}</div>
-      {hint && <div className="text-[10px] text-zinc-400">{hint}</div>}
+      <div className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</div>
+      <div
+        className={cn(
+          'text-2xl font-semibold tabular-nums',
+          tone === 'success' && 'text-emerald-400',
+          tone === 'warning' && 'text-amber-400',
+          tone === 'danger' && 'text-destructive',
+          !tone && 'text-foreground',
+        )}
+      >
+        {value}
+      </div>
     </div>
   );
 }

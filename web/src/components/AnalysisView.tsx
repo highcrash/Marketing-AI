@@ -1,11 +1,19 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { AlertTriangle, Sparkles, Target, Users } from 'lucide-react';
+
 import type { AnalysisResult, Recommendation } from '@/lib/ai/analyze';
 import type { CompletionsByKey, DraftsByRecIndex } from '@/lib/analyses';
 import type { PieceCompletionRow } from '@/lib/piece-completions';
 import type { SmsSendRow } from '@/lib/sms-sends';
 import { computeRecStatus, type RecStatus } from '@/lib/rec-status';
+import { cn } from '@/lib/utils';
+
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
 import { ActivityPanel } from './ActivityPanel';
 import { AuditComparisonPanel } from './AuditComparisonPanel';
 import { RecommendationCard } from './RecommendationCard';
@@ -35,16 +43,10 @@ interface AnalysisViewProps {
   draftingIndex: number | null;
   refiningDraftId: string | null;
   updatingStatusDraftId: string | null;
-  /// Active SMS send keyed by `${draftId}:${pieceIndex}`. Null when nothing in flight.
   sendingPieceKey: string | null;
-  /// Last send result per `${draftId}:${pieceIndex}` from the current session.
   lastSendResultsByPiece: Record<string, SmsSendRow | null>;
-  /// All completions for this analysis, keyed `${draftId}:${pieceIndex}`.
   completions: CompletionsByKey;
-  /// Active completion-toggle keyed `${draftId}:${pieceIndex}`. Null when nothing in flight.
   togglingCompletionKey: string | null;
-  /// Bumped by the dashboard after any state-changing action; triggers
-  /// the ActivityPanel to refetch.
   activityRefreshKey: number;
   onDraft: (recIndex: number) => void;
   onRefine: (draftId: string, feedback: string) => void;
@@ -86,8 +88,6 @@ export function AnalysisView({
   type Filter = 'all' | 'open' | RecStatus;
   const [filter, setFilter] = useState<Filter>('all');
 
-  /// Compute status per rec once so both the chip-counts and the
-  /// per-card filter use the same numbers.
   const recsWithStatus = useMemo(() => {
     return result.recommendations.map((rec, recIndex) => {
       const draft = drafts[recIndex];
@@ -121,19 +121,18 @@ export function AnalysisView({
   const openCount =
     counts['not-drafted'] + counts.drafted + counts.approved + counts['in-progress'];
 
-  /// Filter: 'open' means anything still needing work (not done, not
-  /// rejected). Status-specific filters match exactly.
   function passesFilter(status: RecStatus): boolean {
     if (filter === 'all') return true;
     if (filter === 'open')
-      return status === 'not-drafted' || status === 'drafted' || status === 'approved' || status === 'in-progress';
+      return (
+        status === 'not-drafted' ||
+        status === 'drafted' ||
+        status === 'approved' ||
+        status === 'in-progress'
+      );
     return status === filter;
   }
 
-  // Keep recommendations in their original order so recIndex matches the
-  // canonical position on the saved Analysis row (drafts reference recs by
-  // index). We group visually within that ordering — but only after the
-  // filter is applied so empty categories collapse.
   const filteredOrdered = recsWithStatus.filter((r) => passesFilter(r.status));
   const grouped: Record<string, Array<{ rec: Recommendation; recIndex: number }>> = {};
   for (const item of filteredOrdered) {
@@ -144,26 +143,47 @@ export function AnalysisView({
   }
 
   return (
-    <div className="space-y-10">
-      <section className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-6">
-        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
-          <h2 className="text-xl font-semibold">{result.business.name}</h2>
-          <span className="text-xs uppercase tracking-widest text-zinc-500">
-            {new Date(result.generatedAt).toLocaleString()} · {result.model}
-          </span>
-        </div>
-        <p className="text-zinc-700 dark:text-zinc-300 leading-relaxed">{result.summary}</p>
-        <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs text-zinc-600 dark:text-zinc-400">
-          <Stat label="Input tokens" value={result.inputTokens.toLocaleString()} />
-          <Stat
-            label="Cache read"
-            value={result.cacheReadTokens.toLocaleString()}
-            hint={result.cacheReadTokens > 0 ? 'warm hit' : 'first run'}
-          />
-          <Stat label="Cache write" value={result.cacheWriteTokens.toLocaleString()} />
-          <Stat label="Output tokens" value={result.outputTokens.toLocaleString()} />
-        </div>
-      </section>
+    <div className="space-y-6">
+      {/* Audit summary */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <CardTitle className="text-2xl">{result.business.name}</CardTitle>
+            <span className="text-[11px] uppercase tracking-widest text-muted-foreground font-mono">
+              {new Date(result.generatedAt).toLocaleString()} · {result.model}
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <p className="text-foreground/90 leading-relaxed">{result.summary}</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-border">
+            <TokenStat label="Input" value={result.inputTokens} />
+            <TokenStat
+              label="Cache read"
+              value={result.cacheReadTokens}
+              hint={result.cacheReadTokens > 0 ? 'warm hit' : 'first run'}
+            />
+            <TokenStat label="Cache write" value={result.cacheWriteTokens} />
+            <TokenStat label="Output" value={result.outputTokens} />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Audience confidence fail-safe banner */}
+      {result.audience && result.audience.confidence === 'low' && (
+        <Alert variant="warning">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Confirm the audience before acting on segment-specific recs</AlertTitle>
+          <AlertDescription className="mt-2 space-y-2">
+            <p>The AI&apos;s confidence in the inferred audience is low. Sanity-check:</p>
+            <ul className="list-disc pl-5 space-y-0.5">
+              {result.audience.needsConfirmation.map((n, i) => (
+                <li key={i} className="text-sm">{n}</li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
 
       <ActivityPanel
         analysisId={analysisId}
@@ -174,50 +194,119 @@ export function AnalysisView({
 
       <AuditComparisonPanel analysisId={analysisId} />
 
-      <section>
-        <h3 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-3">
-          Inferred goals
-        </h3>
-        <ul className="space-y-2">
-          {result.inferredGoals.map((g, i) => (
-            <li key={i} className="flex gap-3">
-              <span className="text-red-600 mt-1">●</span>
-              <span className="text-zinc-700 dark:text-zinc-300">{g}</span>
-            </li>
-          ))}
-        </ul>
-      </section>
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Inferred goals */}
+        <Card>
+          <CardHeader className="py-4">
+            <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-widest text-muted-foreground font-semibold">
+              <Sparkles className="h-4 w-4 text-primary" />
+              Inferred goals
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {result.inferredGoals.map((g, i) => (
+                <li key={i} className="flex gap-2 text-sm text-foreground/90 leading-relaxed">
+                  <span className="text-primary mt-1">●</span>
+                  {g}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
 
-      <section className="space-y-6">
+        {/* Audience profile */}
+        {result.audience && (
+          <Card>
+            <CardHeader className="py-4">
+              <CardTitle className="flex items-center justify-between gap-2 text-sm uppercase tracking-widest text-muted-foreground font-semibold">
+                <span className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-primary" />
+                  Audience
+                </span>
+                <Badge
+                  variant={
+                    result.audience.confidence === 'high'
+                      ? 'success'
+                      : result.audience.confidence === 'medium'
+                      ? 'warning'
+                      : 'destructive'
+                  }
+                >
+                  {result.audience.confidence} confidence
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="flex items-center gap-2 flex-wrap text-foreground/90">
+                <Target className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="font-medium">{result.audience.region}</span>
+                <span className="text-muted-foreground">·</span>
+                <span className="text-muted-foreground">{result.audience.country}</span>
+              </div>
+              {result.audience.highValueSegments.length > 0 && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">
+                    High-value segments
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {result.audience.highValueSegments.map((s, i) => (
+                      <Badge key={i} variant="muted">
+                        {s}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {result.audience.demographics.length > 0 && (
+                <ul className="text-foreground/90 space-y-1 text-[12px]">
+                  {result.audience.demographics.map((d, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="text-muted-foreground mt-1">·</span>
+                      {d}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Recommendations + filter chips */}
+      <section className="space-y-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h3 className="text-sm font-semibold uppercase tracking-widest text-zinc-500">
+          <h3 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
             Recommendations · {result.recommendations.length}
           </h3>
-          <div className="flex flex-wrap items-center gap-1 text-[10px] uppercase tracking-widest">
-            <FilterChip label={`All · ${result.recommendations.length}`} active={filter === 'all'} onClick={() => setFilter('all')} />
-            <FilterChip label={`Open · ${openCount}`} active={filter === 'open'} onClick={() => setFilter('open')} tone="open" />
-            <FilterChip label={`Not drafted · ${counts['not-drafted']}`} active={filter === 'not-drafted'} onClick={() => setFilter('not-drafted')} tone="muted" />
-            <FilterChip label={`Drafted · ${counts.drafted}`} active={filter === 'drafted'} onClick={() => setFilter('drafted')} tone="muted" />
-            <FilterChip label={`Approved · ${counts.approved}`} active={filter === 'approved'} onClick={() => setFilter('approved')} tone="success" />
-            <FilterChip label={`In progress · ${counts['in-progress']}`} active={filter === 'in-progress'} onClick={() => setFilter('in-progress')} tone="info" />
-            <FilterChip label={`Done · ${counts.done}`} active={filter === 'done'} onClick={() => setFilter('done')} tone="success" />
+          <div className="flex flex-wrap items-center gap-1">
+            <FilterChip label="All" count={result.recommendations.length} active={filter === 'all'} onClick={() => setFilter('all')} />
+            <FilterChip label="Open" count={openCount} active={filter === 'open'} onClick={() => setFilter('open')} tone="primary" />
+            <FilterChip label="Not drafted" count={counts['not-drafted']} active={filter === 'not-drafted'} onClick={() => setFilter('not-drafted')} />
+            <FilterChip label="Drafted" count={counts.drafted} active={filter === 'drafted'} onClick={() => setFilter('drafted')} />
+            <FilterChip label="Approved" count={counts.approved} active={filter === 'approved'} onClick={() => setFilter('approved')} tone="success" />
+            <FilterChip label="In progress" count={counts['in-progress']} active={filter === 'in-progress'} onClick={() => setFilter('in-progress')} tone="info" />
+            <FilterChip label="Done" count={counts.done} active={filter === 'done'} onClick={() => setFilter('done')} tone="success" />
             {counts.rejected > 0 && (
-              <FilterChip label={`Rejected · ${counts.rejected}`} active={filter === 'rejected'} onClick={() => setFilter('rejected')} tone="warning" />
+              <FilterChip label="Rejected" count={counts.rejected} active={filter === 'rejected'} onClick={() => setFilter('rejected')} tone="warning" />
             )}
           </div>
         </div>
         {filteredOrdered.length === 0 && (
-          <p className="text-xs text-zinc-500 italic">
+          <p className="text-sm text-muted-foreground italic">
             No recommendations match this filter.{' '}
-            <button onClick={() => setFilter('all')} className="text-red-600 hover:underline not-italic">
+            <button
+              onClick={() => setFilter('all')}
+              className="text-primary hover:text-accent underline-offset-4 hover:underline not-italic"
+            >
               Clear filter
             </button>
           </p>
         )}
         {Object.entries(grouped).map(([category, recs]) => (
-          <div key={category}>
-            <h4 className="text-sm font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider border-b border-zinc-200 dark:border-zinc-800 pb-2 mb-4">
-              {CATEGORY_LABEL[category as Recommendation['category']] ?? category}
+          <div key={category} className="space-y-3">
+            <h4 className="text-[10px] uppercase tracking-widest text-muted-foreground border-b border-border pb-2">
+              {CATEGORY_LABEL[category as Recommendation['category']] ?? category} · {recs.length}
             </h4>
             <div className="space-y-4">
               {recs.map(({ rec, recIndex }) => {
@@ -285,58 +374,52 @@ export function AnalysisView({
   );
 }
 
-type ChipTone = 'muted' | 'success' | 'info' | 'warning' | 'open';
+type ChipTone = 'primary' | 'success' | 'info' | 'warning';
 
 function FilterChip({
   label,
+  count,
   active,
   onClick,
   tone,
 }: {
   label: string;
+  count: number;
   active: boolean;
   onClick: () => void;
   tone?: ChipTone;
 }) {
-  const inactive =
-    tone === 'success'
-      ? 'text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
-      : tone === 'info'
-      ? 'text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-900 hover:bg-blue-50 dark:hover:bg-blue-950/40'
-      : tone === 'warning'
-      ? 'text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900 hover:bg-amber-50 dark:hover:bg-amber-950/40'
-      : tone === 'open'
-      ? 'text-red-700 dark:text-red-400 border-red-200 dark:border-red-900 hover:bg-red-50 dark:hover:bg-red-950/40'
-      : 'text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-900';
-  const activeCls =
+  const activeBg =
     tone === 'success'
       ? 'bg-emerald-600 text-white border-emerald-600'
       : tone === 'info'
       ? 'bg-blue-600 text-white border-blue-600'
       : tone === 'warning'
       ? 'bg-amber-600 text-white border-amber-600'
-      : tone === 'open'
-      ? 'bg-red-600 text-white border-red-600'
-      : 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 border-zinc-900 dark:border-zinc-100';
+      : tone === 'primary'
+      ? 'bg-primary text-primary-foreground border-primary'
+      : 'bg-foreground text-background border-foreground';
   return (
     <button
       onClick={onClick}
-      className={`px-2 py-1 border ${active ? activeCls : inactive}`}
+      className={cn(
+        'px-2 py-1 text-[10px] uppercase tracking-widest border transition-colors gap-1.5 inline-flex items-center',
+        active ? activeBg : 'text-muted-foreground border-border hover:border-primary hover:text-primary',
+      )}
     >
       {label}
+      <span className="font-mono opacity-80">{count}</span>
     </button>
   );
 }
 
-function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+function TokenStat({ label, value, hint }: { label: string; value: number; hint?: string }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-widest text-zinc-500">{label}</div>
-      <div className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-        {value}
-        {hint && (
-          <span className="ml-2 text-[10px] text-zinc-400 normal-case tracking-normal">({hint})</span>
-        )}
+      <div className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</div>
+      <div className="text-sm font-medium text-foreground tabular-nums">
+        {value.toLocaleString()}
+        {hint && <span className="ml-2 text-[10px] text-muted-foreground">({hint})</span>}
       </div>
     </div>
   );

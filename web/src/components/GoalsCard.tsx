@@ -1,9 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Target, X } from 'lucide-react';
+import { Pencil, Plus, Save, Target, X } from 'lucide-react';
 
 import type { BusinessGoals, StandardGoalTag } from '@/lib/business';
+
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
 
 interface GoalsResponse {
   goals: BusinessGoals;
@@ -94,122 +102,126 @@ export function GoalsCard() {
   }
 
   return (
-    <section className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-5">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="flex items-center gap-2">
-          <Target size={14} className="text-red-600" />
-          <h3 className="text-sm font-semibold uppercase tracking-widest text-zinc-500">
-            Marketing goals
-          </h3>
-        </div>
+    <Card>
+      <CardHeader className="flex-row items-center justify-between gap-2 py-4">
+        <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-widest text-muted-foreground font-semibold">
+          <Target className="h-4 w-4 text-primary" />
+          Marketing goals
+        </CardTitle>
         {!editing && !loading && (
-          <button
-            onClick={openEditor}
-            className="text-[10px] tracking-widest uppercase text-zinc-500 hover:text-red-600"
-          >
-            {goals.tags.length === 0 && !goals.notes ? '+ Set goals' : 'Edit'}
-          </button>
+          <Button variant="ghost" size="sm" onClick={openEditor} className="gap-1">
+            {goals.tags.length === 0 && !goals.notes ? (
+              <>
+                <Plus className="h-3.5 w-3.5" />
+                Set
+              </>
+            ) : (
+              <>
+                <Pencil className="h-3.5 w-3.5" />
+                Edit
+              </>
+            )}
+          </Button>
         )}
-      </div>
+      </CardHeader>
 
-      {loading ? (
-        <p className="text-xs text-zinc-500">Loading…</p>
-      ) : editing ? (
-        <div className="space-y-3">
-          <div>
-            <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1.5">
-              What outcomes matter most? (pick any)
-            </p>
-            <div className="flex flex-wrap gap-1">
-              {options.map((tag) => {
-                const active = draftTags.has(tag);
-                return (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() => toggleTag(tag)}
-                    disabled={saving}
-                    className={`px-2 py-1 text-[11px] tracking-wider border ${
-                      active
-                        ? 'bg-red-600 text-white border-red-600'
-                        : 'text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:border-red-600 hover:text-red-600'
-                    }`}
-                  >
+      <CardContent>
+        {loading ? (
+          <p className="text-xs text-muted-foreground">Loading…</p>
+        ) : editing ? (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>What outcomes matter most? (pick any)</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {options.map((tag) => {
+                  const active = draftTags.has(tag);
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => toggleTag(tag)}
+                      disabled={saving}
+                      className={cn(
+                        'px-2.5 py-1 text-[11px] tracking-wider border transition-colors',
+                        active
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'text-muted-foreground border-border hover:border-primary hover:text-primary',
+                      )}
+                    >
+                      {TAG_LABEL[tag] ?? tag}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="goal-notes">Context the audit should know about (optional)</Label>
+              <Textarea
+                id="goal-notes"
+                value={draftNotes}
+                onChange={(e) => setDraftNotes(e.target.value)}
+                rows={3}
+                maxLength={1000}
+                disabled={saving}
+                placeholder="e.g. Opening a second branch in July. Eid week is our biggest spike. Budget tight, prefer organic over paid."
+              />
+              <p className="text-[10px] text-muted-foreground text-right">
+                {draftNotes.length}/1000
+              </p>
+            </div>
+
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription className="font-mono break-all">{error}</AlertDescription>
+              </Alert>
+            )}
+
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setEditing(false);
+                  setError(null);
+                }}
+                disabled={saving}
+                className="gap-1"
+              >
+                <X className="h-3.5 w-3.5" />
+                Cancel
+              </Button>
+              <Button type="button" size="sm" onClick={save} disabled={saving} className="gap-1.5">
+                <Save className="h-3.5 w-3.5" />
+                {saving ? 'Saving…' : 'Save goals'}
+              </Button>
+            </div>
+          </div>
+        ) : goals.tags.length === 0 && !goals.notes ? (
+          <p className="text-sm text-muted-foreground italic leading-relaxed">
+            No goals set — the next audit lets Claude infer goals from your data. Set goals here
+            to bias recommendations toward what you actually care about.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {goals.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {goals.tags.map((tag) => (
+                  <Badge key={tag} variant="default">
                     {TAG_LABEL[tag] ?? tag}
-                  </button>
-                );
-              })}
-            </div>
+                  </Badge>
+                ))}
+              </div>
+            )}
+            {goals.notes && (
+              <p className="text-sm text-foreground/90 leading-relaxed border-l-2 border-primary pl-3 py-0.5 italic">
+                {goals.notes}
+              </p>
+            )}
           </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1.5">
-              Context the audit should know about (optional)
-            </p>
-            <textarea
-              value={draftNotes}
-              onChange={(e) => setDraftNotes(e.target.value)}
-              rows={3}
-              maxLength={1000}
-              disabled={saving}
-              placeholder="e.g. Opening a second branch in July. Eid week is our biggest spike. Budget tight, prefer organic over paid."
-              className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 placeholder:text-zinc-400 focus:outline-none focus:border-red-600 resize-y"
-            />
-            <div className="text-[10px] text-zinc-500 mt-1 text-right">
-              {draftNotes.length}/1000
-            </div>
-          </div>
-          <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setEditing(false);
-                setError(null);
-              }}
-              disabled={saving}
-              className="text-[10px] tracking-widest uppercase text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 px-2 py-1"
-            >
-              <X size={11} className="inline mr-1" />
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={save}
-              disabled={saving}
-              className="bg-red-600 hover:bg-red-700 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase"
-            >
-              {saving ? 'Saving…' : 'Save goals'}
-            </button>
-          </div>
-          {error && (
-            <p className="text-xs text-red-600 dark:text-red-400 font-mono break-all">{error}</p>
-          )}
-        </div>
-      ) : goals.tags.length === 0 && !goals.notes ? (
-        <p className="text-xs text-zinc-500 italic">
-          No goals set — the next audit will let Claude infer goals from your data.
-          Set goals here to bias recommendations toward what you actually care about.
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {goals.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {goals.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="px-2 py-0.5 text-[10px] uppercase tracking-wider bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900"
-                >
-                  {TAG_LABEL[tag] ?? tag}
-                </span>
-              ))}
-            </div>
-          )}
-          {goals.notes && (
-            <p className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-words border-l-2 border-red-300 dark:border-red-800 pl-3 py-0.5 italic">
-              {goals.notes}
-            </p>
-          )}
-        </div>
-      )}
-    </section>
+        )}
+      </CardContent>
+    </Card>
   );
 }

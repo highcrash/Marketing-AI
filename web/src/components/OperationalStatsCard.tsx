@@ -1,9 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Activity, DollarSign } from 'lucide-react';
+import { Activity, AlertTriangle, DollarSign } from 'lucide-react';
 
 import type { OperationalStats } from '@/lib/stats';
+
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 
 export function OperationalStatsCard({ refreshKey }: { refreshKey: number }) {
   const [stats, setStats] = useState<OperationalStats | null>(null);
@@ -35,22 +40,27 @@ export function OperationalStatsCard({ refreshKey }: { refreshKey: number }) {
 
   if (error) {
     return (
-      <div className="border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950 p-3">
-        <p className="text-xs font-medium text-red-700 dark:text-red-300 mb-1">Stats failed</p>
-        <p className="text-[10px] text-red-600 dark:text-red-400 font-mono break-all">{error}</p>
-      </div>
+      <Alert variant="destructive">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Stats failed</AlertTitle>
+        <AlertDescription className="font-mono break-all">{error}</AlertDescription>
+      </Alert>
     );
   }
 
   if (!stats) {
     return (
-      <div className="border border-zinc-200 dark:border-zinc-800 p-3">
-        <p className="text-[10px] uppercase tracking-widest text-zinc-500 inline-flex items-center gap-1.5">
-          <Activity size={11} />
-          This month
-        </p>
-        <p className="text-[11px] text-zinc-500 mt-2">Loading…</p>
-      </div>
+      <Card>
+        <CardHeader className="py-4">
+          <CardTitle className="flex items-center gap-2 text-sm uppercase tracking-widest text-muted-foreground font-semibold">
+            <Activity className="h-4 w-4 text-primary" />
+            This month
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-xs text-muted-foreground">Loading…</p>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -60,43 +70,60 @@ export function OperationalStatsCard({ refreshKey }: { refreshKey: number }) {
   });
 
   return (
-    <div className="border border-zinc-200 dark:border-zinc-800 p-3 space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-[10px] uppercase tracking-widest text-zinc-500 inline-flex items-center gap-1.5">
-          <Activity size={11} />
-          Since {since}
-        </p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px]">
-        <Row label="Audits" value={stats.audits} />
-        <Row label="Drafts" value={stats.drafts} />
-        <Row label="Refines" value={stats.refines} />
-        <Row label="Approved" value={stats.draftsApproved} tone="success" />
-        <Row label="Single sends" value={`${stats.singleSendsSuccess}/${stats.singleSends}`} />
-        <Row label="Blasts" value={stats.blasts} />
-        <Row label="Blast recipients" value={stats.blastRecipients} />
-        <Row label="Recipients sent" value={stats.blastSent} />
-        <Row label="Scheduled pending" value={stats.scheduledPending} tone={stats.scheduledPending > 0 ? 'info' : undefined} />
-        <Row label="Recurring active" value={stats.recurringActive} tone={stats.recurringActive > 0 ? 'info' : undefined} />
-        <Row label="Pieces done" value={stats.piecesCompleted} tone={stats.piecesCompleted > 0 ? 'success' : undefined} />
-      </div>
-
-      <div className="pt-2 border-t border-zinc-100 dark:border-zinc-900">
-        <div className="flex items-center justify-between text-[11px]">
-          <span className="text-zinc-500 inline-flex items-center gap-1">
-            <DollarSign size={11} />
-            Estimated AI spend
+    <Card>
+      <CardHeader className="py-4">
+        <CardTitle className="flex items-center justify-between gap-2 text-sm uppercase tracking-widest text-muted-foreground font-semibold">
+          <span className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-primary" />
+            Since {since}
           </span>
-          <span className="font-mono font-medium text-zinc-800 dark:text-zinc-200">
-            ${stats.estimatedAiSpendUsd.toFixed(2)}
-          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
+          <Row label="Audits" value={stats.audits} />
+          <Row label="Drafts" value={stats.drafts} />
+          <Row label="Refines" value={stats.refines} />
+          <Row label="Approved" value={stats.draftsApproved} tone="success" />
+          <Row label="Single sends" value={`${stats.singleSendsSuccess}/${stats.singleSends}`} />
+          <Row label="Blasts" value={stats.blasts} />
+          <Row label="Blast recipients" value={stats.blastRecipients} />
+          <Row label="Recipients sent" value={stats.blastSent} />
+          <Row
+            label="Scheduled pending"
+            value={stats.scheduledPending}
+            tone={stats.scheduledPending > 0 ? 'info' : undefined}
+          />
+          <Row
+            label="Recurring active"
+            value={stats.recurringActive}
+            tone={stats.recurringActive > 0 ? 'info' : undefined}
+          />
+          <Row
+            label="Pieces done"
+            value={stats.piecesCompleted}
+            tone={stats.piecesCompleted > 0 ? 'success' : undefined}
+          />
         </div>
-        <p className="text-[9px] text-zinc-400 mt-1">
-          Approximate. Override rates with ANTHROPIC_INPUT_USD_PER_M etc. in .env.
-        </p>
-      </div>
-    </div>
+
+        <Separator />
+
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-[12px]">
+            <span className="text-muted-foreground inline-flex items-center gap-1.5">
+              <DollarSign className="h-3.5 w-3.5" />
+              Estimated AI spend
+            </span>
+            <span className="font-mono font-medium text-foreground tabular-nums">
+              ${stats.estimatedAiSpendUsd.toFixed(2)}
+            </span>
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            Approximate. Override rates with ANTHROPIC_INPUT_USD_PER_M etc. in .env.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -109,16 +136,19 @@ function Row({
   value: number | string;
   tone?: 'success' | 'info';
 }) {
-  const valueClass =
-    tone === 'success'
-      ? 'text-emerald-600 dark:text-emerald-400'
-      : tone === 'info'
-      ? 'text-blue-600 dark:text-blue-400'
-      : 'text-zinc-800 dark:text-zinc-200';
   return (
     <div className="flex items-center justify-between">
-      <span className="text-zinc-500">{label}</span>
-      <span className={`font-mono font-medium ${valueClass}`}>{value}</span>
+      <span className="text-muted-foreground">{label}</span>
+      <span
+        className={cn(
+          'font-mono font-medium tabular-nums',
+          tone === 'success' && 'text-emerald-400',
+          tone === 'info' && 'text-primary',
+          !tone && 'text-foreground',
+        )}
+      >
+        {value}
+      </span>
     </div>
   );
 }

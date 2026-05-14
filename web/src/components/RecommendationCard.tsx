@@ -1,16 +1,27 @@
 'use client';
 
+import { AlertTriangle, ArrowRight, Sparkles, Wrench } from 'lucide-react';
+
 import type { Recommendation } from '@/lib/ai/analyze';
 import type { DraftRow } from '@/lib/drafts';
 import type { PieceCompletionRow } from '@/lib/piece-completions';
 import type { SmsSendRow } from '@/lib/sms-sends';
 import { computeRecStatus } from '@/lib/rec-status';
+import { cn } from '@/lib/utils';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+
 import { DraftView } from './DraftView';
 
-const PRIORITY_STYLES: Record<Recommendation['priority'], string> = {
-  high: 'bg-red-600 text-white',
-  medium: 'bg-amber-500 text-white',
-  low: 'bg-zinc-400 text-white',
+const PRIORITY_VARIANT: Record<
+  Recommendation['priority'],
+  { label: string; className: string }
+> = {
+  high: { label: 'High', className: 'bg-destructive text-destructive-foreground' },
+  medium: { label: 'Medium', className: 'bg-amber-600 text-white' },
+  low: { label: 'Low', className: 'bg-muted text-muted-foreground' },
 };
 
 export function RecommendationCard({
@@ -51,104 +62,120 @@ export function RecommendationCard({
   ) => void;
 }) {
   const progress = computeRecStatus(draft, completionsByPiece);
+  const priority = PRIORITY_VARIANT[rec.priority];
+
   return (
-    <article className="border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-5">
-      <header className="flex items-start gap-3 mb-3">
+    <Card className="overflow-hidden">
+      <CardHeader className="flex-row items-start justify-between gap-3 border-b">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
+          <span
+            className={cn(
+              'inline-flex items-center px-2 py-0.5 text-[10px] uppercase tracking-widest font-medium whitespace-nowrap mt-0.5',
+              priority.className,
+            )}
+          >
+            {priority.label}
+          </span>
+          <h5 className="font-semibold text-foreground leading-snug min-w-0">{rec.title}</h5>
+        </div>
         <span
-          className={`text-[10px] tracking-widest uppercase font-semibold px-2 py-0.5 ${
-            PRIORITY_STYLES[rec.priority]
-          }`}
-        >
-          {rec.priority}
-        </span>
-        <h5 className="flex-1 font-semibold text-zinc-900 dark:text-zinc-100">{rec.title}</h5>
-        <span
-          className={`text-[10px] tracking-widest uppercase font-medium px-2 py-0.5 whitespace-nowrap ${progress.badgeClass}`}
+          className={cn(
+            'text-[10px] uppercase tracking-widest font-medium px-2 py-0.5 whitespace-nowrap',
+            progress.badgeClass,
+          )}
           title="Progress on this recommendation"
         >
           {progress.label}
         </span>
-      </header>
+      </CardHeader>
 
-      <p className="text-sm text-zinc-700 dark:text-zinc-300 mb-3">
-        <span className="font-medium text-zinc-500">Why · </span>
-        {rec.rationale}
-      </p>
-
-      <p className="text-sm text-zinc-700 dark:text-zinc-300 mb-3">
-        <span className="font-medium text-zinc-500">Expected impact · </span>
-        {rec.expectedImpact}
-      </p>
-
-      {rec.estimatedBudgetBdt != null && (
-        <p className="text-sm text-zinc-700 dark:text-zinc-300 mb-3">
-          <span className="font-medium text-zinc-500">Suggested budget · </span>
-          ৳{rec.estimatedBudgetBdt.toLocaleString()}/month
-        </p>
-      )}
-
-      <div className="mt-3">
-        <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-2">
-          First actions this week
-        </p>
-        <ul className="space-y-1.5 text-sm text-zinc-700 dark:text-zinc-300">
-          {rec.firstActionsThisWeek.map((a, i) => (
-            <li key={i} className="flex gap-2">
-              <span className="text-zinc-400">→</span>
-              <span>{a}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <footer className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-900 flex flex-wrap items-center gap-3 text-xs text-zinc-500">
-        {rec.requiresHumanForExecution && (
-          <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-500">
-            ⚠ requires human creative
-          </span>
-        )}
-        {rec.relatedSkills.length > 0 && (
-          <span className="flex flex-wrap gap-1">
-            {rec.relatedSkills.map((s) => (
-              <span
-                key={s}
-                className="px-1.5 py-0.5 bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 font-mono text-[10px]"
-              >
-                {s}
-              </span>
-            ))}
-          </span>
-        )}
-
-        <div className="ml-auto">
-          {!draft && (
-            <button
-              onClick={onDraft}
-              disabled={isDrafting}
-              className="bg-red-600 hover:bg-red-700 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase"
-            >
-              {isDrafting ? 'Drafting…' : 'Draft this campaign'}
-            </button>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 text-sm">
+          <Block label="Why">{rec.rationale}</Block>
+          <Block label="Expected impact">{rec.expectedImpact}</Block>
+          {rec.estimatedBudgetBdt != null && (
+            <Block label="Suggested budget">
+              <span className="font-mono">৳{rec.estimatedBudgetBdt.toLocaleString()}</span>
+              <span className="text-muted-foreground"> / month</span>
+            </Block>
           )}
         </div>
-      </footer>
+
+        <div>
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
+            First actions this week
+          </p>
+          <ul className="space-y-1.5 text-sm text-foreground">
+            {rec.firstActionsThisWeek.map((a, i) => (
+              <li key={i} className="flex gap-2">
+                <ArrowRight className="h-3.5 w-3.5 mt-1 text-primary flex-shrink-0" />
+                <span>{a}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border">
+          {rec.requiresHumanForExecution && (
+            <Badge variant="warning" className="gap-1">
+              <Wrench className="h-3 w-3" />
+              Needs human creative
+            </Badge>
+          )}
+          {rec.relatedSkills.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {rec.relatedSkills.map((s) => (
+                <span
+                  key={s}
+                  className="px-1.5 py-0.5 bg-muted text-muted-foreground font-mono text-[10px]"
+                >
+                  {s}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {!draft && (
+            <Button
+              onClick={onDraft}
+              disabled={isDrafting}
+              size="sm"
+              className="ml-auto gap-1.5"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              {isDrafting ? 'Drafting…' : 'Draft this campaign'}
+            </Button>
+          )}
+        </div>
+      </CardContent>
 
       {draft && (
-        <DraftView
-          draft={draft}
-          isRefining={isRefining}
-          isUpdatingStatus={isUpdatingStatus}
-          sendingPieceIndex={sendingPieceIndex}
-          lastSendResultByPiece={lastSendResultByPiece}
-          completionsByPiece={completionsByPiece}
-          togglingPieceIndex={togglingPieceIndex}
-          onRefine={onRefine}
-          onSetStatus={onSetStatus}
-          onSendSms={onSendSms}
-          onSegmentBlastSent={onSegmentBlastSent}
-          onToggleCompletion={onToggleCompletion}
-        />
+        <div className="border-t border-border bg-secondary/30">
+          <DraftView
+            draft={draft}
+            isRefining={isRefining}
+            isUpdatingStatus={isUpdatingStatus}
+            sendingPieceIndex={sendingPieceIndex}
+            lastSendResultByPiece={lastSendResultByPiece}
+            completionsByPiece={completionsByPiece}
+            togglingPieceIndex={togglingPieceIndex}
+            onRefine={onRefine}
+            onSetStatus={onSetStatus}
+            onSendSms={onSendSms}
+            onSegmentBlastSent={onSegmentBlastSent}
+            onToggleCompletion={onToggleCompletion}
+          />
+        </div>
       )}
-    </article>
+    </Card>
+  );
+}
+
+function Block({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">{label}</p>
+      <p className="text-foreground leading-relaxed">{children}</p>
+    </div>
   );
 }
