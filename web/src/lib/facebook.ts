@@ -46,6 +46,38 @@ export interface FacebookPageInfo {
   /// this will be null.
   pageAccessToken: string | null;
   category?: string;
+  /// Linked Instagram Business / Creator account, when one is
+  /// configured in Meta Business Suite. Null when none is linked.
+  instagram?: { id: string; username: string | null } | null;
+}
+
+/// Probe a Page for its linked Instagram Business account. The IG
+/// Business / Creator account ID is exposed as `instagram_business_account`
+/// on the Page node. Returns null when no account is linked.
+async function lookupInstagramForPage(
+  pageId: string,
+  accessToken: string,
+): Promise<{ id: string; username: string | null } | null> {
+  try {
+    const res = await fetch(
+      `${GRAPH_BASE}/${encodeURIComponent(pageId)}?` +
+        new URLSearchParams({
+          fields: 'instagram_business_account{id,username}',
+          access_token: accessToken,
+        }).toString(),
+    );
+    const body = (await res.json()) as {
+      instagram_business_account?: { id?: string; username?: string };
+      error?: GraphError;
+    };
+    if (!res.ok || body.error || !body.instagram_business_account?.id) return null;
+    return {
+      id: body.instagram_business_account.id,
+      username: body.instagram_business_account.username ?? null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /// Look up the page that a token can act for. We try /me first (works
@@ -104,6 +136,7 @@ export async function inspectToken(token: string): Promise<{
     } catch {
       // Ignore — category is informational only.
     }
+    const instagram = await lookupInstagramForPage(meObj.id, token);
     return {
       kind: 'page',
       page: {
@@ -111,6 +144,7 @@ export async function inspectToken(token: string): Promise<{
         name: meObj.name ?? '(unnamed page)',
         pageAccessToken: null,
         category,
+        instagram,
       },
       tokenExpiresAt,
       raw: me,
@@ -128,14 +162,21 @@ export async function inspectToken(token: string): Promise<{
   if (!pagesRes.ok) {
     throw new Error('Token is a User token but /me/accounts call failed — cannot enumerate pages');
   }
-  return {
-    kind: 'user',
-    pages: (pages.data ?? []).map((p) => ({
+  // For each page we got back, look up its linked IG account if any.
+  // Done in parallel — if a page has no IG linked, lookupInstagramForPage
+  // returns null which we just pass through.
+  const enriched = await Promise.all(
+    (pages.data ?? []).map(async (p) => ({
       id: p.id,
       name: p.name,
       pageAccessToken: p.access_token ?? null,
       category: p.category,
+      instagram: p.access_token ? await lookupInstagramForPage(p.id, p.access_token) : null,
     })),
+  );
+  return {
+    kind: 'user',
+    pages: enriched,
     tokenExpiresAt,
     raw: { me, pages },
   };
@@ -261,6 +302,10 @@ export interface FacebookConnectionRow {
   tokenExpiresAt: string | null;
   lastValidatedAt: string | null;
   lastValidationError: string | null;
+  /// IG Business / Creator account linked to this Page in Meta
+  /// Business Suite. Null when none is linked.
+  instagramBusinessId: string | null;
+  instagramUsername: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -274,6 +319,8 @@ function rowToConnection(row: {
   tokenExpiresAt: Date | null;
   lastValidatedAt: Date | null;
   lastValidationError: string | null;
+  instagramBusinessId: string | null;
+  instagramUsername: string | null;
   createdAt: Date;
   updatedAt: Date;
 }): FacebookConnectionRow {
@@ -286,6 +333,8 @@ function rowToConnection(row: {
     tokenExpiresAt: row.tokenExpiresAt?.toISOString() ?? null,
     lastValidatedAt: row.lastValidatedAt?.toISOString() ?? null,
     lastValidationError: row.lastValidationError,
+    instagramBusinessId: row.instagramBusinessId,
+    instagramUsername: row.instagramUsername,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -301,14 +350,18 @@ export async function listConnections(businessId: string): Promise<FacebookConne
 
 /// Upsert one page connection. Token is replaced if a row already
 /// exists for this (businessId, pageId) — re-pasting refreshes the
-/// token in place.
+/// token in place. Instagram link (if any) gets persisted too so the
+/// UI knows to surface IG controls without an extra Graph round-trip.
 export async function upsertConnection(params: {
   businessId: string;
   pageId: string;
   pageName: string;
   accessToken: string;
   tokenExpiresAt: Date | null;
+  instagram?: { id: string; username: string | null } | null;
 }): Promise<FacebookConnectionRow> {
+  const igId = params.instagram?.id ?? null;
+  const igUser = params.instagram?.username ?? null;
   const row = await prisma.facebookConnection.upsert({
     where: { businessId_pageId: { businessId: params.businessId, pageId: params.pageId } },
     create: {
@@ -320,6 +373,8 @@ export async function upsertConnection(params: {
       active: true,
       lastValidatedAt: new Date(),
       lastValidationError: null,
+      instagramBusinessId: igId,
+      instagramUsername: igUser,
     },
     update: {
       pageName: params.pageName,
@@ -328,9 +383,29 @@ export async function upsertConnection(params: {
       active: true,
       lastValidatedAt: new Date(),
       lastValidationError: null,
+      instagramBusinessId: igId,
+      instagramUsername: igUser,
     },
   });
   return rowToConnection(row);
+}
+
+/// Re-query Graph for the linked IG account using the stored token.
+/// Lets the user pick up an IG link they just configured in Meta
+/// Business Suite without having to paste the token again.
+export async function refreshConnection(connectionId: string): Promise<FacebookConnectionRow | null> {
+  const conn = await prisma.facebookConnection.findUnique({ where: { id: connectionId } });
+  if (!conn) return null;
+  const ig = await lookupInstagramForPage(conn.pageId, conn.accessToken);
+  const updated = await prisma.facebookConnection.update({
+    where: { id: connectionId },
+    data: {
+      lastValidatedAt: new Date(),
+      instagramBusinessId: ig?.id ?? null,
+      instagramUsername: ig?.username ?? null,
+    },
+  });
+  return rowToConnection(updated);
 }
 
 export async function deleteConnection(connectionId: string): Promise<void> {
@@ -355,6 +430,7 @@ export interface FacebookPostEventRow {
   draftId: string | null;
   pieceIndex: number | null;
   message: string;
+  target: PostTarget;
   status: 'PENDING' | 'POSTED' | 'FAILED' | 'PROVIDER_ERROR';
   providerPostId: string | null;
   error: string | null;
@@ -369,6 +445,7 @@ function rowToPostEvent(row: {
   draftId: string | null;
   pieceIndex: number | null;
   message: string;
+  target: string;
   status: string;
   providerPostId: string | null;
   error: string | null;
@@ -382,6 +459,7 @@ function rowToPostEvent(row: {
     draftId: row.draftId,
     pieceIndex: row.pieceIndex,
     message: row.message,
+    target: (row.target as PostTarget) ?? 'facebook',
     status: row.status as FacebookPostEventRow['status'],
     providerPostId: row.providerPostId,
     error: row.error,
@@ -393,10 +471,16 @@ function rowToPostEvent(row: {
 /// Publish a text-or-photo-or-reel post through a saved connection.
 /// Persists the attempt before the upstream call so even network
 /// failures get audited.
+export type PostTarget = 'facebook' | 'instagram';
+
 export async function publishPost(params: {
   businessId: string;
   connectionId: string;
   message: string;
+  /// Which platform to publish to. 'instagram' requires the linked
+  /// FacebookConnection.instagramBusinessId to be set + the token
+  /// to carry instagram_content_publish scope.
+  target?: PostTarget;
   /// Optional public URL of an image. When set, the post is published
   /// as a photo (with the message as the caption). Must be reachable
   /// from Facebook's servers — `localhost` URLs won't work.
@@ -407,12 +491,19 @@ export async function publishPost(params: {
   draftId?: string | null;
   pieceIndex?: number | null;
 }): Promise<FacebookPostEventRow> {
+  const target: PostTarget = params.target ?? 'facebook';
   const conn = await getConnection(params.connectionId);
   if (!conn || conn.row.businessId !== params.businessId) {
     throw new Error('connection_not_found');
   }
   if (!conn.row.active) {
     throw new Error('connection_inactive');
+  }
+  if (target === 'instagram' && !conn.row.instagramBusinessId) {
+    throw new Error('No Instagram Business account linked to this page');
+  }
+  if (target === 'instagram' && !params.imageUrl && !params.videoUrl) {
+    throw new Error('Instagram posts require an image or video URL');
   }
   const pending = await prisma.facebookPostEvent.create({
     data: {
@@ -421,12 +512,32 @@ export async function publishPost(params: {
       draftId: params.draftId ?? null,
       pieceIndex: params.pieceIndex ?? null,
       message: params.message,
+      target,
       status: 'PENDING',
     },
   });
   try {
     let id: string;
-    if (params.videoUrl && params.videoUrl.trim().length > 0) {
+    if (target === 'instagram') {
+      const igUserId = conn.row.instagramBusinessId!;
+      if (params.videoUrl && params.videoUrl.trim().length > 0) {
+        const result = await postInstagramReel({
+          igUserId,
+          pageAccessToken: conn.accessToken,
+          videoUrl: params.videoUrl.trim(),
+          caption: params.message,
+        });
+        id = result.id;
+      } else {
+        const result = await postInstagramPhoto({
+          igUserId,
+          pageAccessToken: conn.accessToken,
+          imageUrl: params.imageUrl!.trim(),
+          caption: params.message,
+        });
+        id = result.id;
+      }
+    } else if (params.videoUrl && params.videoUrl.trim().length > 0) {
       const result = await postReelToPage({
         pageId: conn.row.pageId,
         pageAccessToken: conn.accessToken,
@@ -603,6 +714,107 @@ export async function fetchAllPageInsights(
     ),
   );
   return results.filter((r): r is FacebookPageInsightsSnapshot => r !== null);
+}
+
+/// Publish a photo to an Instagram Business / Creator account. Two-
+/// step container flow: create the media container with image_url +
+/// caption, then publish it via /media_publish.
+///
+/// Requires the Page Access Token to carry the instagram_basic +
+/// instagram_content_publish permissions. Tokens minted from the
+/// Graph API Explorer typically need these granted explicitly via the
+/// "Get Token" permissions picker.
+export async function postInstagramPhoto(params: {
+  igUserId: string;
+  pageAccessToken: string;
+  imageUrl: string;
+  caption: string;
+}): Promise<{ id: string }> {
+  const containerForm = new URLSearchParams();
+  containerForm.set('image_url', params.imageUrl);
+  containerForm.set('caption', params.caption);
+  containerForm.set('access_token', params.pageAccessToken);
+  const cRes = await fetch(`${GRAPH_BASE}/${encodeURIComponent(params.igUserId)}/media`, {
+    method: 'POST',
+    body: containerForm,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  });
+  const cBody = (await cRes.json()) as { id?: string; error?: GraphError };
+  if (!cRes.ok || cBody.error || !cBody.id) {
+    throw new Error(cBody.error?.message ?? `IG container create failed: HTTP ${cRes.status}`);
+  }
+  const publishForm = new URLSearchParams();
+  publishForm.set('creation_id', cBody.id);
+  publishForm.set('access_token', params.pageAccessToken);
+  const pRes = await fetch(`${GRAPH_BASE}/${encodeURIComponent(params.igUserId)}/media_publish`, {
+    method: 'POST',
+    body: publishForm,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  });
+  const pBody = (await pRes.json()) as { id?: string; error?: GraphError };
+  if (!pRes.ok || pBody.error || !pBody.id) {
+    throw new Error(pBody.error?.message ?? `IG publish failed: HTTP ${pRes.status}`);
+  }
+  return { id: pBody.id };
+}
+
+/// Publish a Reel to Instagram. Same 2-step container flow, but with
+/// media_type=REELS + video_url. FB encodes asynchronously; we poll
+/// the container's status_code briefly to make sure it left the
+/// IN_PROGRESS state before calling /media_publish.
+export async function postInstagramReel(params: {
+  igUserId: string;
+  pageAccessToken: string;
+  videoUrl: string;
+  caption: string;
+}): Promise<{ id: string }> {
+  const containerForm = new URLSearchParams();
+  containerForm.set('media_type', 'REELS');
+  containerForm.set('video_url', params.videoUrl);
+  containerForm.set('caption', params.caption);
+  containerForm.set('access_token', params.pageAccessToken);
+  const cRes = await fetch(`${GRAPH_BASE}/${encodeURIComponent(params.igUserId)}/media`, {
+    method: 'POST',
+    body: containerForm,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  });
+  const cBody = (await cRes.json()) as { id?: string; error?: GraphError };
+  if (!cRes.ok || cBody.error || !cBody.id) {
+    throw new Error(cBody.error?.message ?? `IG Reel container create failed: HTTP ${cRes.status}`);
+  }
+  const containerId = cBody.id;
+
+  // Poll the container's status_code. FB encodes asynchronously; we
+  // wait up to ~20s (40 × 500ms). If it's still IN_PROGRESS after
+  // that we fire the publish anyway — the call may succeed once
+  // encoding completes, and the post still ends up live; we just
+  // surface FB's error if it doesn't.
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 500));
+    const sRes = await fetch(
+      `${GRAPH_BASE}/${encodeURIComponent(containerId)}?fields=status_code&access_token=${encodeURIComponent(params.pageAccessToken)}`,
+    );
+    const sBody = (await sRes.json()) as { status_code?: string; error?: GraphError };
+    if (sBody.status_code === 'FINISHED') break;
+    if (sBody.status_code === 'ERROR') {
+      throw new Error('IG Reel container encode failed');
+    }
+  }
+
+  const publishForm = new URLSearchParams();
+  publishForm.set('creation_id', containerId);
+  publishForm.set('access_token', params.pageAccessToken);
+  const pRes = await fetch(`${GRAPH_BASE}/${encodeURIComponent(params.igUserId)}/media_publish`, {
+    method: 'POST',
+    body: publishForm,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  });
+  const pBody = (await pRes.json()) as { id?: string; error?: GraphError };
+  if (!pRes.ok || pBody.error || !pBody.id) {
+    throw new Error(pBody.error?.message ?? `IG Reel publish failed: HTTP ${pRes.status}`);
+  }
+  return { id: pBody.id };
 }
 
 export async function listRecentPostEvents(

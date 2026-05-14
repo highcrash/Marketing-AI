@@ -33,6 +33,10 @@ export interface ScheduledFacebookPostConfig {
   /// Optional public MP4 URL — when set the fire publishes a Reel.
   /// Takes precedence over imageUrl if both are present.
   videoUrl?: string | null;
+  /// 'facebook' (default) or 'instagram'. IG fires require the
+  /// connection to have a linked IG Business account at fire time;
+  /// the scheduler skips with a reason if it doesn't.
+  target?: 'facebook' | 'instagram';
 }
 
 export type ScheduledConfig =

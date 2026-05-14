@@ -68,7 +68,8 @@ function parseConfig(kind: string, raw: unknown): ScheduledConfig | null {
     const imageUrl = /^https?:\/\/[^\s]+$/i.test(rawImage) ? rawImage : null;
     const rawVideo = typeof obj.videoUrl === 'string' ? obj.videoUrl.trim() : '';
     const videoUrl = /^https?:\/\/[^\s]+$/i.test(rawVideo) ? rawVideo : null;
-    return { connectionId, body, imageUrl, videoUrl };
+    const target = obj.target === 'instagram' ? 'instagram' : 'facebook';
+    return { connectionId, body, imageUrl, videoUrl, target };
   }
   return null;
 }

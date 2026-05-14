@@ -38,6 +38,7 @@ export async function POST(req: Request) {
         pageName: inspected.page.name,
         accessToken,
         tokenExpiresAt: inspected.tokenExpiresAt,
+        instagram: inspected.page.instagram,
       });
       return NextResponse.json({ connection: conn });
     }
@@ -70,6 +71,7 @@ export async function POST(req: Request) {
       // We don't get a per-page expiry from /me/accounts; fall back to
       // the User token's expiry which usually matches.
       tokenExpiresAt: inspected.tokenExpiresAt,
+      instagram: picked.instagram,
     });
     return NextResponse.json({ connection: conn });
   } catch (err: unknown) {

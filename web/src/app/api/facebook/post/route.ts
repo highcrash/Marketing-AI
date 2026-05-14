@@ -9,6 +9,9 @@ export const dynamic = 'force-dynamic';
 interface PostBody {
   connectionId?: unknown;
   message?: unknown;
+  /// 'facebook' (default) or 'instagram'. IG requires the connection
+  /// to have a linked IG Business account.
+  target?: unknown;
   imageUrl?: unknown;
   videoUrl?: unknown;
   draftId?: unknown;
@@ -69,11 +72,15 @@ export async function POST(req: Request) {
       );
     }
 
+    const target: 'facebook' | 'instagram' =
+      body.target === 'instagram' ? 'instagram' : 'facebook';
+
     const business = await getOrCreateBusinessFromEnv();
     const event = await publishPost({
       businessId: business.id,
       connectionId,
       message,
+      target,
       imageUrl,
       videoUrl,
       draftId,
@@ -84,12 +91,16 @@ export async function POST(req: Request) {
     // way SMS sends do. The user can still un-mark or edit the note.
     if (event.status === 'POSTED' && draftId !== null && pieceIndex !== null) {
       const kindLabel = videoUrl ? '(reel)' : imageUrl ? '(photo)' : '';
+      const platform = target === 'instagram' ? 'Instagram' : 'Facebook';
       await markPieceComplete({
         draftId,
         pieceIndex,
-        source: 'integrated-facebook-post',
+        source:
+          target === 'instagram'
+            ? 'integrated-instagram-post'
+            : 'integrated-facebook-post',
         notes: event.providerPostId
-          ? `Posted to Facebook${kindLabel ? ' ' + kindLabel : ''} · post id ${event.providerPostId}`
+          ? `Posted to ${platform}${kindLabel ? ' ' + kindLabel : ''} · post id ${event.providerPostId}`
           : null,
       });
     }

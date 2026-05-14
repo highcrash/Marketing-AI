@@ -143,6 +143,13 @@ model FacebookConnection {
   active              Boolean   @default(true)
   lastValidatedAt     DateTime?
   lastValidationError String?
+  /// Instagram Business / Creator account linked to this Page. Null
+  /// when the user hasn't linked one in Meta Business Suite. When
+  /// set, the platform can publish photos + reels to Instagram using
+  /// the same Page Access Token (provided it carries the
+  /// instagram_content_publish scope).
+  instagramBusinessId String?
+  instagramUsername   String?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
@@ -165,6 +172,10 @@ model FacebookPostEvent {
   draftId         String?
   pieceIndex      Int?
   message         String
+  /// 'facebook' = Page feed/photos/Reels; 'instagram' = IG photo /
+  /// Reels via the linked IG Business account. Older rows default to
+  /// 'facebook' for backwards compat.
+  target          String   @default("facebook")
   /// PENDING (in flight), POSTED (success), FAILED (caught error),
   /// PROVIDER_ERROR (Graph returned an error envelope).
   status          String   @default("PENDING")

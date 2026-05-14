@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle2, ExternalLink, Plus, Trash2, X, XCircle } from 'lucide-react';
+import { CheckCircle2, ExternalLink, Plus, RefreshCw, Trash2, X, XCircle } from 'lucide-react';
 
 import type { FacebookConnectionRow, FacebookPostEventRow } from '@/lib/facebook';
 import { FacebookIcon } from './icons/FacebookIcon';
+import { InstagramIcon } from './icons/InstagramIcon';
 
 interface ListResponse {
   connections: FacebookConnectionRow[];
@@ -89,6 +90,22 @@ export function ConnectionsView() {
     }
     await fetch(`/api/facebook/connections/${encodeURIComponent(id)}`, { method: 'DELETE' });
     await refresh();
+  }
+
+  /// Re-query Graph for a connection's linked IG account using the
+  /// stored token. The whole point: when the owner has just linked an
+  /// IG Business account in Meta Business Suite, they can pick it up
+  /// without re-pasting the token.
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  async function recheck(id: string) {
+    if (refreshingId !== null) return;
+    setRefreshingId(id);
+    try {
+      await fetch(`/api/facebook/connections/${encodeURIComponent(id)}/refresh`, { method: 'POST' });
+      await refresh();
+    } finally {
+      setRefreshingId(null);
+    }
   }
 
   return (
@@ -219,15 +236,39 @@ export function ConnectionsView() {
                         Token expires {new Date(c.tokenExpiresAt).toLocaleString()}
                       </p>
                     )}
+                    {c.instagramBusinessId ? (
+                      <p className="text-[11px] mt-1 inline-flex items-center gap-1.5 text-primary">
+                        <InstagramIcon size={11} />
+                        <span>
+                          Instagram linked{c.instagramUsername ? ` · @${c.instagramUsername}` : ''}
+                        </span>
+                      </p>
+                    ) : (
+                      <p className="text-[10px] mt-1 text-muted-foreground">
+                        No Instagram Business account linked. Link one in Meta Business Suite, then
+                        hit <span className="text-foreground">Re-check</span>.
+                      </p>
+                    )}
                   </div>
                 </div>
-                <button
-                  onClick={() => disconnect(c.id)}
-                  className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-muted-foreground hover:text-primary"
-                >
-                  <Trash2 size={11} />
-                  Disconnect
-                </button>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => recheck(c.id)}
+                    disabled={refreshingId === c.id}
+                    className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-muted-foreground hover:text-primary disabled:opacity-50"
+                    title="Re-query Graph for the IG link / token status"
+                  >
+                    <RefreshCw size={11} className={refreshingId === c.id ? 'animate-spin' : ''} />
+                    {refreshingId === c.id ? 'Checking' : 'Re-check'}
+                  </button>
+                  <button
+                    onClick={() => disconnect(c.id)}
+                    className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 size={11} />
+                    Disconnect
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -245,17 +286,30 @@ export function ConnectionsView() {
             {recentPosts.map((p) => (
               <li key={p.id} className="px-4 py-3 text-sm">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <span
-                    className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 ${
-                      p.status === 'POSTED'
-                        ? 'bg-emerald-950/40 text-emerald-300'
-                        : p.status === 'PENDING'
-                        ? 'bg-muted text-foreground'
-                        : 'bg-amber-950/40 text-amber-300'
-                    }`}
-                  >
-                    {p.status}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {p.target === 'instagram' ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider px-1.5 py-0.5 bg-primary/15 text-primary">
+                        <InstagramIcon size={10} />
+                        IG
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider px-1.5 py-0.5 bg-primary/15 text-primary">
+                        <FacebookIcon size={10} />
+                        FB
+                      </span>
+                    )}
+                    <span
+                      className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 ${
+                        p.status === 'POSTED'
+                          ? 'bg-emerald-950/40 text-emerald-300'
+                          : p.status === 'PENDING'
+                          ? 'bg-muted text-foreground'
+                          : 'bg-amber-950/40 text-amber-300'
+                      }`}
+                    >
+                      {p.status}
+                    </span>
+                  </div>
                   <span className="text-[10px] text-muted-foreground">
                     {new Date(p.createdAt).toLocaleString()}
                   </span>
@@ -264,16 +318,21 @@ export function ConnectionsView() {
                   {p.message.slice(0, 280)}
                   {p.message.length > 280 ? '…' : ''}
                 </p>
-                {p.providerPostId && (
+                {p.providerPostId && p.target !== 'instagram' && (
                   <a
                     href={`https://www.facebook.com/${p.providerPostId.replace('_', '/posts/')}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 mt-1 text-[10px] text-primary hover:text-blue-700 font-mono"
+                    className="inline-flex items-center gap-1 mt-1 text-[10px] text-primary hover:text-accent font-mono"
                   >
                     <ExternalLink size={10} />
                     {p.providerPostId}
                   </a>
+                )}
+                {p.providerPostId && p.target === 'instagram' && (
+                  <p className="inline-flex items-center gap-1 mt-1 text-[10px] text-muted-foreground font-mono">
+                    media id {p.providerPostId}
+                  </p>
                 )}
                 {p.error && (
                   <p className="mt-1 text-[11px] text-destructive break-all">

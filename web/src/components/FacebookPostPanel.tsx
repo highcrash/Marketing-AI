@@ -68,6 +68,10 @@ export function FacebookPostPanel({
   /// up via /api/drafts/:id/schedule, 'recurring' creates a
   /// RecurringSchedule that fires every chosen day-of-week.
   const [mode, setMode] = useState<'now' | 'later' | 'recurring'>('now');
+  /// Which platform to publish to. 'instagram' is only available when
+  /// the active connection has a linked IG Business account (set in
+  /// Meta Business Suite). The toggle is hidden when no IG link exists.
+  const [target, setTarget] = useState<'facebook' | 'instagram'>('facebook');
   const [scheduleAt, setScheduleAt] = useState(defaultScheduleAt);
   const [scheduling, setScheduling] = useState(false);
   const [scheduleResult, setScheduleResult] = useState<{ id: string; scheduledAt: string } | null>(null);
@@ -187,6 +191,7 @@ export function FacebookPostPanel({
         body: JSON.stringify({
           connectionId: selectedId,
           message: trimmed,
+          target,
           imageUrl: mediaKind === 'photo' ? url : null,
           videoUrl: mediaKind === 'reel' ? url : null,
           draftId,
@@ -242,6 +247,7 @@ export function FacebookPostPanel({
           config: {
             connectionId: selectedId,
             body: trimmed,
+            target,
             imageUrl: mediaKind === 'photo' ? url : null,
             videoUrl: mediaKind === 'reel' ? url : null,
           },
@@ -324,6 +330,7 @@ export function FacebookPostPanel({
           config: {
             connectionId: selectedId,
             body: trimmed,
+            target,
             imageUrl: mediaKind === 'photo' ? url : null,
             videoUrl: mediaKind === 'reel' ? url : null,
           },
@@ -431,7 +438,10 @@ export function FacebookPostPanel({
 
           {/* Media kind toggle — text-only / photo / reel */}
           <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest">
-            {(['text', 'photo', 'reel'] as const).map((k) => {
+            {((target === 'instagram'
+              ? (['photo', 'reel'] as MediaKind[])
+              : (['text', 'photo', 'reel'] as MediaKind[])
+            )).map((k) => {
               const Icon = k === 'text' ? Type : k === 'photo' ? ImageIcon : Video;
               return (
                 <button
@@ -516,6 +526,45 @@ export function FacebookPostPanel({
               )}
             </div>
           )}
+
+          {/* Target toggle: only shown when the active connection has
+              an Instagram Business account linked. IG requires an
+              image or video — text-only IG isn't possible. */}
+          {(() => {
+            const sel = connections.find((c) => c.id === selectedId);
+            if (!sel?.instagramBusinessId) return null;
+            return (
+              <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest">
+                <span className="text-muted-foreground mr-1">Post to</span>
+                <button
+                  type="button"
+                  onClick={() => setTarget('facebook')}
+                  className={`px-2 py-1 border ${
+                    target === 'facebook'
+                      ? 'bg-foreground text-background border-foreground'
+                      : 'text-muted-foreground border-border'
+                  }`}
+                >
+                  Facebook
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTarget('instagram');
+                    if (mediaKind === 'text') setMediaKind('photo');
+                  }}
+                  className={`px-2 py-1 border ${
+                    target === 'instagram'
+                      ? 'bg-foreground text-background border-foreground'
+                      : 'text-muted-foreground border-border'
+                  }`}
+                  title={`Instagram · @${sel.instagramUsername ?? 'linked account'}`}
+                >
+                  Instagram{sel.instagramUsername ? ` · @${sel.instagramUsername}` : ''}
+                </button>
+              </div>
+            );
+          })()}
 
           <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest">
             <button
