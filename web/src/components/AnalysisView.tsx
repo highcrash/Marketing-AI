@@ -58,6 +58,7 @@ interface AnalysisViewProps {
     draftId: string,
     pieceIndex: number,
     currentlyComplete: boolean,
+    notes?: string | null,
   ) => void;
 }
 
@@ -198,8 +199,8 @@ export function AnalysisView({
                       draft && onSendSms(draft.id, pieceIndex, phone, bodyOverride)
                     }
                     onSegmentBlastSent={onSegmentBlastSent}
-                    onToggleCompletion={(pieceIndex, currentlyComplete) =>
-                      draft && onToggleCompletion(draft.id, pieceIndex, currentlyComplete)
+                    onToggleCompletion={(pieceIndex, currentlyComplete, notes) =>
+                      draft && onToggleCompletion(draft.id, pieceIndex, currentlyComplete, notes)
                     }
                   />
                 );

@@ -232,15 +232,22 @@ export function AnalysisDashboard({
     draftId: string,
     pieceIndex: number,
     currentlyComplete: boolean,
+    notes?: string | null,
   ) {
     const key = `${draftId}:${pieceIndex}`;
     if (togglingCompletionKey !== null) return;
     setTogglingCompletionKey(key);
     try {
       const method = currentlyComplete ? 'DELETE' : 'POST';
+      const trimmedNotes =
+        typeof notes === 'string' && notes.trim().length > 0 ? notes.trim() : null;
       const res = await fetch(
         `/api/drafts/${encodeURIComponent(draftId)}/pieces/${pieceIndex}/complete`,
-        { method, headers: { 'Content-Type': 'application/json' } },
+        {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: method === 'POST' ? JSON.stringify({ notes: trimmedNotes }) : undefined,
+        },
       );
       if (!res.ok) {
         const text = await res.text().catch(() => '');
@@ -256,7 +263,7 @@ export function AnalysisDashboard({
             id: 'pending',
             draftId,
             pieceIndex,
-            notes: null,
+            notes: trimmedNotes,
             source: 'manual',
             completedAt: new Date().toISOString(),
           };

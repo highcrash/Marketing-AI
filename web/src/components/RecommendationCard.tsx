@@ -88,7 +88,11 @@ export function RecommendationCard({
   onSetStatus: (status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED') => void;
   onSendSms: (pieceIndex: number, phone: string, bodyOverride: string | null) => void;
   onSegmentBlastSent: () => void;
-  onToggleCompletion: (pieceIndex: number, currentlyComplete: boolean) => void;
+  onToggleCompletion: (
+    pieceIndex: number,
+    currentlyComplete: boolean,
+    notes?: string | null,
+  ) => void;
 }) {
   const progress = computeProgressBadge(draft, completionsByPiece);
   return (

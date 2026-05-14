@@ -73,7 +73,11 @@ export function DraftView({
   /// Bubbled up after a segment blast completes (success or partial) so
   /// the parent activity feed can re-fetch.
   onSegmentBlastSent: () => void;
-  onToggleCompletion: (pieceIndex: number, currentlyComplete: boolean) => void;
+  onToggleCompletion: (
+    pieceIndex: number,
+    currentlyComplete: boolean,
+    notes?: string | null,
+  ) => void;
 }) {
   const canSendSms = draft.status === 'APPROVED';
   const payload = draft.payload;
@@ -157,8 +161,8 @@ export function DraftView({
               draftId={draft.id}
               onSendSms={(phone, body) => onSendSms(i, phone, body)}
               onSegmentBlastSent={onSegmentBlastSent}
-              onToggleCompletion={(currentlyComplete) =>
-                onToggleCompletion(i, currentlyComplete)
+              onToggleCompletion={(currentlyComplete, notes) =>
+                onToggleCompletion(i, currentlyComplete, notes)
               }
             />
           ))}
@@ -342,7 +346,7 @@ function PieceCard({
   draftId: string;
   onSendSms: (phone: string, bodyOverride: string | null) => void;
   onSegmentBlastSent: () => void;
-  onToggleCompletion: (currentlyComplete: boolean) => void;
+  onToggleCompletion: (currentlyComplete: boolean, notes?: string | null) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [showSendForm, setShowSendForm] = useState(false);
@@ -353,6 +357,12 @@ function PieceCard({
   /// opens the form fresh — they can edit before sending without
   /// mutating the canonical draft.
   const [editedBody, setEditedBody] = useState(piece.content);
+  /// Notes-on-completion mini form. Opens when the user clicks an empty
+  /// circle (so they can capture HOW they did it externally — Twilio
+  /// campaign id, designer name, etc.) or clicks "Edit note" on an
+  /// already-complete piece.
+  const [showCompletionForm, setShowCompletionForm] = useState(false);
+  const [completionNotes, setCompletionNotes] = useState('');
   const isBrief = BRIEF_ASSET_TYPES.includes(piece.assetType);
   const isSmsPiece = piece.assetType === 'sms';
   const showSmsControls = isSmsPiece && canSendSms;
@@ -362,6 +372,40 @@ function PieceCard({
     await navigator.clipboard.writeText(piece.content);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  }
+
+  function onCirclePress() {
+    if (isComplete) {
+      // Already done → toggle off immediately. Notes editing is a
+      // separate action via the "Edit note" link.
+      onToggleCompletion(true);
+      return;
+    }
+    // Not yet done → open the inline form so the user can optionally
+    // jot down where/how the work happened before marking it done.
+    setCompletionNotes('');
+    setShowCompletionForm(true);
+  }
+
+  function submitCompletion() {
+    const trimmed = completionNotes.trim();
+    onToggleCompletion(false, trimmed.length > 0 ? trimmed : null);
+    setShowCompletionForm(false);
+    setCompletionNotes('');
+  }
+
+  function openEditNotes() {
+    setCompletionNotes(completion?.notes ?? '');
+    setShowCompletionForm(true);
+  }
+
+  function saveEditedNotes() {
+    // Editing an existing completion: re-submit the mark call with new
+    // notes. The server-side upsert updates the row in place.
+    const trimmed = completionNotes.trim();
+    onToggleCompletion(false, trimmed.length > 0 ? trimmed : null);
+    setShowCompletionForm(false);
+    setCompletionNotes('');
   }
 
   function submitSend() {
@@ -387,8 +431,8 @@ function PieceCard({
       >
         <div className="flex items-center gap-2 text-[11px]">
           <button
-            onClick={() => onToggleCompletion(isComplete)}
-            disabled={isTogglingCompletion}
+            onClick={onCirclePress}
+            disabled={isTogglingCompletion || showCompletionForm}
             className={`inline-flex items-center justify-center ${isComplete ? 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700' : 'text-zinc-400 hover:text-emerald-600'} disabled:opacity-50`}
             title={
               isComplete
@@ -458,6 +502,94 @@ function PieceCard({
         <p className="px-3 pb-3 text-[11px] text-zinc-500 border-t border-zinc-100 dark:border-zinc-900 pt-2">
           {piece.notes}
         </p>
+      )}
+
+      {isComplete && completion && !showCompletionForm && (
+        <div className="border-t border-emerald-100 dark:border-emerald-950 bg-emerald-50/40 dark:bg-emerald-950/20 px-3 py-2 text-[11px]">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1">
+              <CheckCircle2 size={11} />
+              <span className="font-medium">
+                {completion.source === 'integrated-sms-send'
+                  ? 'Sent via Restora'
+                  : completion.source === 'integrated-sms-blast'
+                  ? 'Blasted via Restora'
+                  : 'Marked done'}
+              </span>
+              <span className="text-zinc-500">
+                · {new Date(completion.completedAt).toLocaleString()}
+              </span>
+            </span>
+            <button
+              onClick={openEditNotes}
+              disabled={isTogglingCompletion}
+              className="text-[10px] uppercase tracking-widest text-zinc-600 dark:text-zinc-400 hover:text-emerald-600 disabled:opacity-50"
+            >
+              {completion.notes ? 'Edit note' : '+ Add note'}
+            </button>
+          </div>
+          {completion.notes && (
+            <p className="mt-1.5 text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-words">
+              {completion.notes}
+            </p>
+          )}
+        </div>
+      )}
+
+      {showCompletionForm && (
+        <div className="border-t border-emerald-100 dark:border-emerald-950 bg-emerald-50/40 dark:bg-emerald-950/20 px-3 py-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] uppercase tracking-widest text-zinc-500">
+              {isComplete ? 'Edit completion note' : 'Mark done — how did you do it? (optional)'}
+            </p>
+            <button
+              onClick={() => {
+                setShowCompletionForm(false);
+                setCompletionNotes('');
+              }}
+              className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+              aria-label="Cancel"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <textarea
+            value={completionNotes}
+            onChange={(e) => setCompletionNotes(e.target.value)}
+            placeholder={
+              isSmsPiece
+                ? 'e.g. Sent via Twilio · campaign id MG123… · 142 recipients'
+                : 'e.g. Posted on FB page manually · briefed designer Rahim on 14 May'
+            }
+            rows={2}
+            maxLength={500}
+            autoFocus
+            disabled={isTogglingCompletion}
+            className="w-full bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-sm text-zinc-800 dark:text-zinc-200 px-3 py-2 placeholder:text-zinc-400 focus:outline-none focus:border-emerald-600 resize-y"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                isComplete ? saveEditedNotes() : submitCompletion();
+              }
+            }}
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-zinc-500">
+              ⌘/Ctrl + Enter · {completionNotes.length}/500
+            </span>
+            <button
+              onClick={isComplete ? saveEditedNotes : submitCompletion}
+              disabled={isTogglingCompletion}
+              className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-300 disabled:text-zinc-500 dark:disabled:bg-zinc-800 text-white px-3 py-1.5 text-[10px] font-medium tracking-widest uppercase inline-flex items-center gap-1"
+            >
+              <Check size={11} />
+              {isTogglingCompletion
+                ? 'Saving…'
+                : isComplete
+                ? 'Save note'
+                : 'Mark done'}
+            </button>
+          </div>
+        </div>
       )}
 
       {showSmsControls && showSendForm && (
