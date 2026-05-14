@@ -1,14 +1,22 @@
 'use client';
 
+import type React from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { CheckCircle2, Filter, Send, Users } from 'lucide-react';
 
 import type { CompletionListItem } from '@/lib/all-completions';
+import { FacebookIcon } from './icons/FacebookIcon';
 
 type SourceFilter = 'all' | 'manual' | 'integrated';
 
-const SOURCE_BADGE: Record<string, { label: string; className: string; Icon: typeof CheckCircle2 }> = {
+// Lucide icons and our local FacebookIcon both render an SVG, but lucide
+// uses forwardRef so the shape doesn't quite match a plain function
+// component. ComponentType<any> sidesteps the friction without losing
+// type safety at the call site (we always pass `size`/`className`).
+type IconComp = React.ComponentType<{ size?: number; className?: string }>;
+
+const SOURCE_BADGE: Record<string, { label: string; className: string; Icon: IconComp }> = {
   manual: {
     label: 'Manual',
     className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
@@ -23,6 +31,11 @@ const SOURCE_BADGE: Record<string, { label: string; className: string; Icon: typ
     label: 'SMS blast',
     className: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
     Icon: Users,
+  },
+  'integrated-facebook-post': {
+    label: 'FB post',
+    className: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+    Icon: FacebookIcon,
   },
 };
 

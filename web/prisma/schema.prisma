@@ -55,6 +55,67 @@ model Business {
   updatedAt DateTime @updatedAt
 
   analyses Analysis[]
+  facebookConnections FacebookConnection[]
+  facebookPostEvents  FacebookPostEvent[]
+}
+
+/// One Facebook Page that this business has authorised the platform to
+/// post to. The `accessToken` is a Page Access Token (Graph API);
+/// `tokenExpiresAt` is null for long-lived tokens that don't expire and
+/// otherwise the Graph-reported expiration. The connection is treated as
+/// dead once the validator hits an OAuthException — `lastValidatedAt`
+/// and `lastValidationError` capture that.
+///
+/// One business can have many pages; the UI picks one when the user
+/// clicks "Post to Facebook" on a draft piece with channel=facebook.
+model FacebookConnection {
+  id                  String   @id @default(cuid())
+  businessId          String
+  pageId              String
+  pageName            String
+  accessToken         String
+  /// 'long-lived' (Graph: never expires for Page tokens with appropriate
+  /// scopes) or an ISO datetime. We keep it as a nullable DateTime —
+  /// null means "long-lived / no expiry reported".
+  tokenExpiresAt      DateTime?
+  active              Boolean   @default(true)
+  lastValidatedAt     DateTime?
+  lastValidationError String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  business    Business             @relation(fields: [businessId], references: [id])
+  postEvents  FacebookPostEvent[]
+
+  @@unique([businessId, pageId])
+  @@index([businessId, active])
+}
+
+/// One row per attempted post-to-Facebook. Persisted BEFORE the upstream
+/// call so even network failures get audited; the status flips to
+/// POSTED or FAILED after the Graph API call returns. The
+/// `providerPostId` is the Graph-returned post id (page_id_post_id
+/// format) so the user can click through to the live post.
+model FacebookPostEvent {
+  id              String   @id @default(cuid())
+  businessId      String
+  connectionId    String
+  draftId         String?
+  pieceIndex      Int?
+  message         String
+  /// PENDING (in flight), POSTED (success), FAILED (caught error),
+  /// PROVIDER_ERROR (Graph returned an error envelope).
+  status          String   @default("PENDING")
+  providerPostId  String?
+  error           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  business    Business           @relation(fields: [businessId], references: [id])
+  connection  FacebookConnection @relation(fields: [connectionId], references: [id])
+
+  @@index([businessId, createdAt])
+  @@index([connectionId, createdAt])
 }
 
 /// One row per successful analysis run. The full AnalysisResult JSON

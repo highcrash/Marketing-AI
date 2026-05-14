@@ -7,6 +7,8 @@ import type { DraftPiece } from '@/lib/ai/draft';
 import type { DraftRow } from '@/lib/drafts';
 import type { PieceCompletionRow } from '@/lib/piece-completions';
 import type { SmsSendRow } from '@/lib/sms-sends';
+import { FacebookIcon } from './icons/FacebookIcon';
+import { FacebookPostPanel } from './FacebookPostPanel';
 import { SegmentBlastPanel } from './SegmentBlastPanel';
 import { SchedulePanel } from './SchedulePanel';
 
@@ -352,6 +354,7 @@ function PieceCard({
   const [showSendForm, setShowSendForm] = useState(false);
   const [showBlastForm, setShowBlastForm] = useState(false);
   const [showScheduleForm, setShowScheduleForm] = useState(false);
+  const [showFacebookForm, setShowFacebookForm] = useState(false);
   const [phone, setPhone] = useState('');
   /// Per-form editable body. Reset to piece.content whenever the user
   /// opens the form fresh — they can edit before sending without
@@ -366,6 +369,13 @@ function PieceCard({
   const isBrief = BRIEF_ASSET_TYPES.includes(piece.assetType);
   const isSmsPiece = piece.assetType === 'sms';
   const showSmsControls = isSmsPiece && canSendSms;
+  /// Anything destined for Facebook — both social-post pieces and
+  /// paid-ad-copy pieces — can be published as a page text post once
+  /// the draft is APPROVED. The user can still edit before submitting.
+  const isFacebookPiece =
+    piece.channel.toLowerCase() === 'facebook' &&
+    (piece.assetType === 'social-post' || piece.assetType === 'paid-ad-copy');
+  const showFacebookControls = isFacebookPiece && canSendSms; // same APPROVED gate
   const isComplete = !!completion;
 
   async function copy() {
@@ -440,6 +450,8 @@ function PieceCard({
                   ? 'Done · sent via Restora'
                   : completion?.source === 'integrated-sms-blast'
                   ? 'Done · blasted via Restora'
+                  : completion?.source === 'integrated-facebook-post'
+                  ? 'Done · posted to Facebook'
                   : 'Done · click to un-mark'
                 : 'Mark this piece as done (e.g. sent externally, brief delivered, change made)'
             }
@@ -491,6 +503,16 @@ function PieceCard({
               </button>
             </>
           )}
+          {showFacebookControls && !showFacebookForm && (
+            <button
+              onClick={() => setShowFacebookForm(true)}
+              className="inline-flex items-center gap-1 text-[10px] text-white bg-blue-600 hover:bg-blue-700 px-2 py-0.5"
+              title="Publish this piece to a connected Facebook page"
+            >
+              <FacebookIcon size={11} />
+              Post to Facebook
+            </button>
+          )}
         </div>
       </header>
 
@@ -514,6 +536,8 @@ function PieceCard({
                   ? 'Sent via Restora'
                   : completion.source === 'integrated-sms-blast'
                   ? 'Blasted via Restora'
+                  : completion.source === 'integrated-facebook-post'
+                  ? 'Posted to Facebook'
                   : 'Marked done'}
               </span>
               <span className="text-zinc-500">
@@ -683,6 +707,16 @@ function PieceCard({
           pieceIndex={pieceIndex}
           pieceContent={piece.content}
           onClose={() => setShowScheduleForm(false)}
+        />
+      )}
+
+      {showFacebookControls && showFacebookForm && (
+        <FacebookPostPanel
+          draftId={draftId}
+          pieceIndex={pieceIndex}
+          pieceContent={piece.content}
+          onClose={() => setShowFacebookForm(false)}
+          onPosted={onSegmentBlastSent}
         />
       )}
     </div>

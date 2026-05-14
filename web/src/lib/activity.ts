@@ -149,16 +149,22 @@ export async function getAnalysisActivity(
 
   for (const c of completions) {
     const isAuto = c.source !== 'manual';
+    let summary: string;
+    if (c.source === 'integrated-facebook-post') {
+      summary = c.notes ? `Posted to Facebook: ${c.notes.slice(0, 80)}` : 'Posted to Facebook';
+    } else if (isAuto) {
+      summary = `Auto-marked piece done (${c.source})`;
+    } else if (c.notes) {
+      summary = `Marked piece done: ${c.notes.slice(0, 80)}`;
+    } else {
+      summary = 'Marked piece done (handled externally)';
+    }
     items.push({
       at: c.completedAt.toISOString(),
       kind: 'completion',
       recIndex: c.draft.recIndex,
       recTitle: c.draft.recTitle,
-      summary: isAuto
-        ? `Auto-marked piece done (${c.source})`
-        : c.notes
-        ? `Marked piece done: ${c.notes.slice(0, 80)}`
-        : 'Marked piece done (handled externally)',
+      summary,
       tone: 'success',
     });
   }

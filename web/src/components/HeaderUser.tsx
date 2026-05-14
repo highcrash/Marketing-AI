@@ -1,7 +1,7 @@
 'use client';
 
 import { signOut, useSession } from 'next-auth/react';
-import { Calendar, CheckCircle2, LogOut } from 'lucide-react';
+import { Calendar, CheckCircle2, LogOut, Plug } from 'lucide-react';
 import Link from 'next/link';
 
 export function HeaderUser() {
@@ -25,6 +25,14 @@ export function HeaderUser() {
       >
         <CheckCircle2 size={11} />
         Completions
+      </Link>
+      <Link
+        href="/connections"
+        className="inline-flex items-center gap-1 px-2 py-1 border border-zinc-200 dark:border-zinc-800 hover:border-blue-600 hover:text-blue-600"
+        title="Manage Facebook + other external connections"
+      >
+        <Plug size={11} />
+        Connections
       </Link>
       <span className="hidden sm:inline">{session.user.email}</span>
       <button
