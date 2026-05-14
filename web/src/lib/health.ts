@@ -233,7 +233,8 @@ async function fetchRecentLogs(): Promise<RecentLogEntry[]> {
       'journalctl -u marketing-ai.service --no-pager --lines=30 --output=short-iso 2>/dev/null || true',
       { timeout: 4_000, maxBuffer: 256 * 1024 },
     );
-    const lines = stdout
+    const text = typeof stdout === 'string' ? stdout : stdout.toString('utf-8');
+    const lines = text
       .split('\n')
       .map((s) => s.trim())
       .filter((s) => s.length > 0 && !s.startsWith('--'));
@@ -246,7 +247,8 @@ async function fetchRecentLogs(): Promise<RecentLogEntry[]> {
         /\b(error|fail|exception|cannot find module|throw)\b/i.test(message) ? 'error' : 'info';
       return { at, level, message };
     });
-  } catch {
+  } catch (err: unknown) {
+    console.error('[health] fetchRecentLogs failed:', err instanceof Error ? err.message : err);
     return [];
   }
 }
@@ -282,7 +284,8 @@ async function fetchBackupSummary(): Promise<HealthReport['backups']> {
       }
     }
     return { count: files.length, newestAt, newestAgeHours };
-  } catch {
+  } catch (err: unknown) {
+    console.error('[health] fetchBackupSummary failed:', err instanceof Error ? err.message : err);
     return { count: 0, newestAt: null, newestAgeHours: null };
   }
 }
