@@ -289,6 +289,50 @@ async function fetchBackupSummary(): Promise<HealthReport['backups']> {
   }
 }
 
+/// Reduce the per-component results to one overall HealthStatus. Used
+/// by the lightweight summary endpoint that drives the header badge.
+/// 'down' beats 'degraded' beats 'unknown' beats 'ok'.
+export function overallStatus(report: HealthReport): HealthStatus {
+  const rank: Record<HealthStatus, number> = { ok: 0, unknown: 1, degraded: 2, down: 3 };
+  let worst: HealthStatus = 'ok';
+  const check = (s: HealthStatus) => {
+    if (rank[s] > rank[worst]) worst = s;
+  };
+  check(report.db.status);
+  check(report.restora.status);
+  check(report.anthropic.status);
+  for (const f of report.facebook) check(f.status);
+  return worst;
+}
+
+// In-process cache. Multiple tabs hitting the badge polling endpoint
+// every minute shouldn't each trigger a fresh round of Anthropic +
+// Restora + Graph + journalctl + sqlite probes. 60s is a comfortable
+// staleness window for a status badge (the user can click through to
+// /health and force-refresh from there).
+let cachedReport: { at: number; report: HealthReport } | null = null;
+const CACHE_TTL_MS = 60_000;
+/// Concurrent callers that hit the cache mid-fetch should wait on the
+/// same in-flight promise instead of stampeding new fetches.
+let inFlight: Promise<HealthReport> | null = null;
+
+export async function getCachedHealthReport(): Promise<HealthReport> {
+  const now = Date.now();
+  if (cachedReport && now - cachedReport.at < CACHE_TTL_MS) {
+    return cachedReport.report;
+  }
+  if (inFlight) return inFlight;
+  inFlight = runHealthCheck()
+    .then((report) => {
+      cachedReport = { at: Date.now(), report };
+      return report;
+    })
+    .finally(() => {
+      inFlight = null;
+    });
+  return inFlight;
+}
+
 export async function runHealthCheck(): Promise<HealthReport> {
   // Resolve the business first because the FB check needs it. Doing
   // this serially is fine because the call is local-DB-only.

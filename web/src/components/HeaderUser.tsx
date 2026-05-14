@@ -1,8 +1,10 @@
 'use client';
 
 import { signOut, useSession } from 'next-auth/react';
-import { Activity, Calendar, CheckCircle2, LogOut, Plug } from 'lucide-react';
+import { Calendar, CheckCircle2, LogOut, Plug } from 'lucide-react';
 import Link from 'next/link';
+
+import { HealthBadge } from './HealthBadge';
 
 export function HeaderUser() {
   const { data: session, status } = useSession();
@@ -34,14 +36,7 @@ export function HeaderUser() {
         <Plug size={11} />
         Connections
       </Link>
-      <Link
-        href="/health"
-        className="inline-flex items-center gap-1 px-2 py-1 border border-zinc-200 dark:border-zinc-800 hover:border-emerald-600 hover:text-emerald-600"
-        title="DB / Restora / Claude / Facebook connection health"
-      >
-        <Activity size={11} />
-        Health
-      </Link>
+      <HealthBadge />
       <span className="hidden sm:inline">{session.user.email}</span>
       <button
         onClick={() => signOut({ callbackUrl: '/login' })}
