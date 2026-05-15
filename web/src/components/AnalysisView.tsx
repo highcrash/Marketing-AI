@@ -119,7 +119,16 @@ function InboxSection({
   completions,
   latestPlan,
   draftingIndex,
+  updatingStatusDraftId,
+  refiningDraftId,
+  sendingPieceKey,
+  togglingCompletionKey,
+  lastSendResultsByPiece,
   onDraft,
+  onSetStatus,
+  onRefine,
+  onSendSms,
+  onToggleCompletion,
   onJumpToRec,
 }: AnalysisViewProps) {
   return (
@@ -129,7 +138,18 @@ function InboxSection({
       completions={completions}
       latestPlan={latestPlan}
       draftingIndex={draftingIndex}
+      updatingStatusDraftId={updatingStatusDraftId}
+      refiningDraftId={refiningDraftId}
+      sendingPieceKey={sendingPieceKey}
+      togglingCompletionKey={togglingCompletionKey}
+      lastSendResultsByPiece={lastSendResultsByPiece}
       onDraft={onDraft}
+      onSetStatus={onSetStatus}
+      onRefine={onRefine}
+      onSendSms={onSendSms}
+      onToggleCompletion={(draftId, pieceIndex, currentlyComplete, notes) =>
+        onToggleCompletion(draftId, pieceIndex, currentlyComplete, notes, null)
+      }
       onOpenRec={onJumpToRec}
     />
   );
