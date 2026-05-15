@@ -109,6 +109,11 @@ model Business {
   /// (e.g. "we're opening a second branch in Q3", "Eid week is our
   /// biggest revenue spike"). Null when never set.
   goalNotes String?
+  /// Owner-set IANA timezone (e.g. "Asia/Dhaka"). When set, overrides
+  /// the timezone Restora reports via /business/profile — used by the
+  /// audit pipeline for "today's date" and by the UI for rendering
+  /// plan/draft/schedule timestamps. Null = trust Restora.
+  timezone  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -10,6 +10,7 @@ import type {
   ScheduledSingleConfig,
 } from '@/lib/scheduled-sends';
 import type { RecurringScheduleRow } from '@/lib/recurring-schedules';
+import { formatDateTime, nextWeeklyFireInTz } from '@/lib/format-tz';
 
 type RecurrenceMode = 'once' | 'weekly';
 type SendMode = 'single' | 'blast';
@@ -17,6 +18,8 @@ type SendMode = 'single' | 'blast';
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
 /// Tomorrow 10:00 in browser-local time, formatted for <input type="datetime-local">.
+/// The datetime-local input is inherently browser-local; storage upstream
+/// converts via toISOString(), so this stays browser-local by design.
 function tomorrowAtTenLocal(): string {
   const d = new Date();
   d.setDate(d.getDate() + 1);
@@ -25,24 +28,11 @@ function tomorrowAtTenLocal(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/// Compute the next future moment that is (dayOfWeek, hour:minute) in
-/// the browser's local timezone. Used as the first fire for a weekly
-/// recurring schedule.
-function nextWeeklyFireLocal(dayOfWeek: number, hour: number, minute: number): Date {
-  const now = new Date();
-  const target = new Date(now);
-  target.setHours(hour, minute, 0, 0);
-  const currentDow = target.getDay();
-  let daysAhead = (dayOfWeek - currentDow + 7) % 7;
-  if (daysAhead === 0 && target.getTime() <= now.getTime()) daysAhead = 7;
-  target.setDate(target.getDate() + daysAhead);
-  return target;
-}
-
 export function SchedulePanel({
   draftId,
   pieceIndex,
   pieceContent,
+  timezone,
   onClose,
 }: {
   draftId: string;
@@ -50,6 +40,10 @@ export function SchedulePanel({
   /// Canonical SMS body from the draft. Seeds the editable body
   /// textarea; user can fix placeholders before scheduling.
   pieceContent: string;
+  /// Business IANA timezone — used for weekly fire time computation
+  /// (so "Thursday 10:00" means 10:00 in the business's wall clock,
+  /// not the operator's browser) and for rendering scheduled dates.
+  timezone: string;
   onClose: () => void;
 }) {
   const [onceItems, setOnceItems] = useState<ScheduledSendRow[]>([]);
@@ -183,8 +177,7 @@ export function SchedulePanel({
         throw new Error('Time must be HH:mm');
       }
       const config = buildConfig();
-      const firstFireAt = nextWeeklyFireLocal(dayOfWeek, hour, minute);
-      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      const firstFireAt = nextWeeklyFireInTz(timezone, dayOfWeek, hour, minute);
       const res = await fetch(`/api/drafts/${encodeURIComponent(draftId)}/recurring`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -398,8 +391,13 @@ export function SchedulePanel({
             First fire:{' '}
             {(() => {
               const [hh, mm] = timeOfDay.split(':');
-              const fire = nextWeeklyFireLocal(dayOfWeek, Number(hh), Number(mm));
-              return fire.toLocaleString();
+              const fire = nextWeeklyFireInTz(
+                timezone,
+                dayOfWeek,
+                Number(hh),
+                Number(mm),
+              );
+              return `${formatDateTime(fire, timezone)} (${timezone})`;
             })()}
           </p>
         </div>
@@ -492,6 +490,9 @@ export function SchedulePanel({
                   />
                 ))}
               </ul>
+              {/* Items render in their own saved zone (item.timezone),
+                  not the business zone — if a recurring was scheduled
+                  in zone X, it should keep showing as X. */}
             </div>
           )}
           {onceForThisPiece.length > 0 && (
@@ -501,7 +502,12 @@ export function SchedulePanel({
               </p>
               <ul className="space-y-1.5">
                 {onceForThisPiece.map((item) => (
-                  <ScheduledRow key={item.id} item={item} onCancel={() => cancelOnce(item.id)} />
+                  <ScheduledRow
+                    key={item.id}
+                    item={item}
+                    timezone={timezone}
+                    onCancel={() => cancelOnce(item.id)}
+                  />
                 ))}
               </ul>
             </div>
@@ -543,8 +549,16 @@ function TabButton({
   );
 }
 
-function ScheduledRow({ item, onCancel }: { item: ScheduledSendRow; onCancel: () => void }) {
-  const when = new Date(item.scheduledAt).toLocaleString();
+function ScheduledRow({
+  item,
+  timezone,
+  onCancel,
+}: {
+  item: ScheduledSendRow;
+  timezone: string;
+  onCancel: () => void;
+}) {
+  const when = formatDateTime(item.scheduledAt, timezone);
   const summary =
     item.kind === 'single'
       ? `→ ${(item.config as ScheduledSingleConfig).phone}`
@@ -599,7 +613,10 @@ function RecurringRow({
   onSkipNext: () => void;
   onDelete: () => void;
 }) {
-  const next = new Date(item.nextFireAt).toLocaleString();
+  // Render nextFireAt in the row's own saved zone — that's the wall
+  // clock the operator selected, which may differ from the business
+  // zone for legacy rows scheduled before timezone propagation.
+  const next = formatDateTime(item.nextFireAt, item.timezone);
   const dayLabel = DAY_LABELS[item.dayOfWeek];
   const timeLabel = `${String(item.hour).padStart(2, '0')}:${String(item.minute).padStart(2, '0')}`;
   const cadence = `Every ${dayLabel} at ${timeLabel}`;

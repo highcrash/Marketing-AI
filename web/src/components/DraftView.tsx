@@ -7,6 +7,7 @@ import type { DraftPiece } from '@/lib/ai/draft';
 import type { DraftRow } from '@/lib/drafts';
 import type { PieceCompletionRow } from '@/lib/piece-completions';
 import type { SmsSendRow } from '@/lib/sms-sends';
+import { formatDateTime, formatTime } from '@/lib/format-tz';
 import { FacebookIcon } from './icons/FacebookIcon';
 import { CampaignCodePanel } from './CampaignCodePanel';
 import { FacebookPostPanel } from './FacebookPostPanel';
@@ -51,6 +52,7 @@ function channelLabel(c: string): string {
 
 export function DraftView({
   draft,
+  timezone,
   isRefining,
   isUpdatingStatus,
   sendingPieceIndex,
@@ -64,6 +66,8 @@ export function DraftView({
   onToggleCompletion,
 }: {
   draft: DraftRow;
+  /// Business IANA timezone — applied to draft/completion/send timestamps.
+  timezone: string;
   isRefining: boolean;
   isUpdatingStatus: boolean;
   sendingPieceIndex: number | null;
@@ -119,7 +123,7 @@ export function DraftView({
             )}
           </h6>
           <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
-            {new Date(draft.createdAt).toLocaleString()}
+            {formatDateTime(draft.createdAt, timezone)}
           </span>
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -163,6 +167,7 @@ export function DraftView({
               completion={completionsByPiece[i] ?? null}
               isTogglingCompletion={togglingPieceIndex === i}
               draftId={draft.id}
+              timezone={timezone}
               onSendSms={(phone, body) => onSendSms(i, phone, body)}
               onSegmentBlastSent={onSegmentBlastSent}
               onToggleCompletion={(currentlyComplete, notes, attachment) =>
@@ -336,6 +341,7 @@ function PieceCard({
   completion,
   isTogglingCompletion,
   draftId,
+  timezone,
   onSendSms,
   onSegmentBlastSent,
   onToggleCompletion,
@@ -348,6 +354,7 @@ function PieceCard({
   completion: PieceCompletionRow | null;
   isTogglingCompletion: boolean;
   draftId: string;
+  timezone: string;
   onSendSms: (phone: string, bodyOverride: string | null) => void;
   onSegmentBlastSent: () => void;
   onToggleCompletion: (
@@ -741,7 +748,7 @@ function PieceCard({
                   : 'Marked done'}
               </span>
               <span className="text-muted-foreground">
-                · {new Date(completion.completedAt).toLocaleString()}
+                · {formatDateTime(completion.completedAt, timezone)}
               </span>
             </span>
             <button
@@ -942,7 +949,7 @@ function PieceCard({
       )}
 
       {showSmsControls && lastSendResult && !showSendForm && (
-        <SendResultLine result={lastSendResult} />
+        <SendResultLine result={lastSendResult} timezone={timezone} />
       )}
 
       {showSmsControls && showBlastForm && (
@@ -960,6 +967,7 @@ function PieceCard({
           draftId={draftId}
           pieceIndex={pieceIndex}
           pieceContent={localPiece.content}
+          timezone={timezone}
           onClose={() => setShowScheduleForm(false)}
         />
       )}
@@ -984,7 +992,7 @@ function PieceCard({
   );
 }
 
-function SendResultLine({ result }: { result: SmsSendRow }) {
+function SendResultLine({ result, timezone }: { result: SmsSendRow; timezone: string }) {
   const isSuccess = result.status === 'SENT';
   const styles = isSuccess
     ? 'text-emerald-400 bg-emerald-950/30 border-emerald-900/60'
@@ -1002,7 +1010,7 @@ function SendResultLine({ result }: { result: SmsSendRow }) {
         <span className="block mt-1 break-all whitespace-pre-wrap">{result.error}</span>
       )}
       <span className="text-muted-foreground ml-2">
-        {new Date(result.createdAt).toLocaleTimeString()}
+        {formatTime(result.createdAt, timezone)}
       </span>
     </div>
   );

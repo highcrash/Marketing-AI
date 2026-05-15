@@ -24,11 +24,13 @@ import { cn } from '@/lib/utils';
 import { AnalysisView } from './AnalysisView';
 import { GoalsCard } from './GoalsCard';
 import { OperationalStatsCard } from './OperationalStatsCard';
+import { TimezoneCard } from './TimezoneCard';
 import type { AnalysisResult, Recommendation } from '@/lib/ai/analyze';
 import type { AnalysisListItem, CompletionsByKey, DraftsByRecIndex } from '@/lib/analyses';
 import type { DraftRow } from '@/lib/drafts';
 import type { SmsSendRow } from '@/lib/sms-sends';
 import type { CampaignPlan } from '@/lib/plan-types';
+import { formatDateTime } from '@/lib/format-tz';
 
 export type DashboardSection = 'overview' | 'audience' | 'plan' | 'recs' | 'activity';
 
@@ -599,6 +601,7 @@ export function AnalysisDashboard({
         )}
 
         <GoalsCard />
+        <TimezoneCard />
         <OperationalStatsCard refreshKey={activityRefreshKey} />
 
         <Card>
@@ -627,7 +630,10 @@ export function AnalysisDashboard({
                         )}
                       >
                         <div className="font-medium text-foreground">
-                          {new Date(item.generatedAt).toLocaleString()}
+                          {formatDateTime(
+                            item.generatedAt,
+                            current?.result.business.timezone ?? 'UTC',
+                          )}
                         </div>
                         <div className="text-[11px] text-muted-foreground mt-0.5">
                           {item.recommendationCount} recs · {item.model.replace('claude-', '')}

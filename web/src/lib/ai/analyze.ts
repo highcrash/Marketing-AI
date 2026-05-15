@@ -34,6 +34,11 @@ export interface AnalysisOptions {
   /// "we're price-sensitive about ad spend", etc.).
   goalTags?: readonly string[];
   goalNotes?: string | null;
+  /// Owner-set IANA timezone override. When provided, replaces whatever
+  /// Restora reports via /business/profile in the AnalysisResult — so
+  /// "today" in prompts and rendering everywhere downstream uses the
+  /// owner's chosen zone.
+  timezoneOverride?: string | null;
 }
 
 export interface Recommendation {
@@ -422,8 +427,12 @@ Produce the audit by calling the submit_marketing_audit tool. Cite specific numb
     recommendations: Recommendation[];
   };
 
+  const effectiveBusiness = options.timezoneOverride
+    ? { ...profileMeta, timezone: options.timezoneOverride }
+    : profileMeta;
+
   return {
-    business: profileMeta,
+    business: effectiveBusiness,
     generatedAt: new Date().toISOString(),
     model,
     inputTokens: response.usage.input_tokens,

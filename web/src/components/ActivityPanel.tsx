@@ -16,6 +16,7 @@ import {
 import type { AnalysisResult } from '@/lib/ai/analyze';
 import type { DraftsByRecIndex } from '@/lib/analyses';
 import type { ActivityItem } from '@/lib/activity';
+import { formatDateTime } from '@/lib/format-tz';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -195,7 +196,7 @@ export function ActivityPanel({
                         <span className="break-words">{item.summary}</span>
                       </div>
                       <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
-                        {new Date(item.at).toLocaleString()} ·{' '}
+                        {formatDateTime(item.at, result.business.timezone)} ·{' '}
                         <span className="italic">{item.recTitle}</span>
                       </div>
                     </div>

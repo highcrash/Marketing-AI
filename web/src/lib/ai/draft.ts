@@ -12,6 +12,7 @@ import Anthropic from '@anthropic-ai/sdk';
 
 import type { AnalysisResult, Recommendation } from './analyze';
 import { loadSkillsBySlug, type Skill } from './skills';
+import { todayInTz } from '../format-tz';
 
 export interface DraftOptions {
   model?: string;
@@ -261,8 +262,10 @@ export async function runDraftGeneration(
   // for the full snapshot a second time. The audit summary captures the
   // numerical state already. Today's date is included so the model can
   // resolve "expires in 14 days" / "valid till X" into absolute dates
-  // rather than emitting [DATE+14] template placeholders.
-  const today = new Date().toISOString().slice(0, 10);
+  // rather than emitting [DATE+14] template placeholders. We compute
+  // "today" in the BUSINESS's zone — using UTC would give the wrong
+  // calendar day for Asia/Dhaka requests near UTC midnight.
+  const today = todayInTz(audit.business.timezone);
   const baseContext = `Business: ${audit.business.name}
 Currency: ${audit.business.currency}  ·  Timezone: ${audit.business.timezone}
 Today: ${today}  (use this when resolving expiry / validity dates into absolute dates)

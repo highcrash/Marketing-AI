@@ -103,6 +103,49 @@ export async function getBusinessGoals(businessId: string): Promise<BusinessGoal
   };
 }
 
+/// Read the owner-set IANA timezone override. Null means "fall back to
+/// whatever Restora reports via /business/profile."
+export async function getBusinessTimezone(
+  businessId: string,
+): Promise<string | null> {
+  const row = await prisma.business.findUnique({
+    where: { id: businessId },
+    select: { timezone: true },
+  });
+  const tz = row?.timezone ?? null;
+  if (!tz) return null;
+  return isValidIanaTimezone(tz) ? tz : null;
+}
+
+/// Persist an owner-set timezone, or clear the override (pass null).
+/// We validate the IANA name against the runtime's tz database so a
+/// typo can't break every downstream Intl.DateTimeFormat call.
+export async function setBusinessTimezone(
+  businessId: string,
+  timezone: string | null,
+): Promise<string | null> {
+  const trimmed = timezone?.trim() || null;
+  if (trimmed !== null && !isValidIanaTimezone(trimmed)) {
+    throw new Error(`Unknown IANA timezone: ${trimmed}`);
+  }
+  await prisma.business.update({
+    where: { id: businessId },
+    data: { timezone: trimmed },
+  });
+  return trimmed;
+}
+
+/// Probe Intl.DateTimeFormat with the name. Anything not in the
+/// runtime's tz database throws a RangeError — that's our signal.
+function isValidIanaTimezone(name: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: name });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /// Persist owner-set marketing goals. Tags are filtered to the known
 /// vocabulary so the prompt logic never has to guard against typos.
 export async function setBusinessGoals(

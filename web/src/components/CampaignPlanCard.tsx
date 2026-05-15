@@ -45,6 +45,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
+import { formatDateShort, formatHourOfDay, todayInTz } from '@/lib/format-tz';
 
 const DISABLED_OPTIONS: Array<{ id: DisabledCategory; label: string }> = [
   { id: 'video-production', label: 'Video production' },
@@ -79,6 +80,7 @@ export function CampaignPlanCard({
   onPlanCreated,
   onJumpToRec,
   recommendations,
+  timezone,
 }: {
   analysisId: string;
   plans: CampaignPlan[];
@@ -87,6 +89,7 @@ export function CampaignPlanCard({
   onPlanCreated: (plan: CampaignPlan) => void;
   onJumpToRec: (recIndex: number) => void;
   recommendations: Recommendation[];
+  timezone: string;
 }) {
   const [showBuilder, setShowBuilder] = useState(false);
 
@@ -122,7 +125,7 @@ export function CampaignPlanCard({
           {loading ? (
             <p className="text-xs text-muted-foreground">Loading…</p>
           ) : latestPlan ? (
-            <PlanDisplay plan={latestPlan} onJumpToRec={onJumpToRec} recommendations={recommendations} />
+            <PlanDisplay plan={latestPlan} onJumpToRec={onJumpToRec} recommendations={recommendations} timezone={timezone} />
           ) : (
             <p className="text-sm text-muted-foreground italic leading-relaxed">
               Turn this audit&apos;s recommendations into a time-bucketed calendar with redistributable
@@ -137,6 +140,7 @@ export function CampaignPlanCard({
       <PlanBuilderDialog
         open={showBuilder}
         analysisId={analysisId}
+        timezone={timezone}
         onOpenChange={setShowBuilder}
         onBuilt={(plan) => {
           onPlanCreated(plan);
@@ -151,10 +155,12 @@ function PlanDisplay({
   plan,
   onJumpToRec,
   recommendations,
+  timezone,
 }: {
   plan: CampaignPlan;
   onJumpToRec: (recIndex: number) => void;
   recommendations: Recommendation[];
+  timezone: string;
 }) {
   const tasksByWeek = new Map<number, PlanTask[]>();
   // Bucket tasks into their week by date. We use the week's startDate
@@ -227,7 +233,7 @@ function PlanDisplay({
               <div className="flex items-baseline justify-between gap-3 flex-wrap mb-2">
                 <div>
                   <p className="text-[10px] uppercase tracking-widest text-primary font-semibold">
-                    Week {w.weekIndex} · {new Date(w.startDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    Week {w.weekIndex} · {formatDateShort(w.startDate, timezone)}
                   </p>
                   <p className="text-sm font-medium text-foreground">{w.theme}</p>
                 </div>
@@ -253,15 +259,15 @@ function PlanDisplay({
                         >
                           <div className="flex flex-col items-center w-14 flex-shrink-0">
                             <span className="text-[10px] uppercase tracking-widest text-muted-foreground">
-                              {new Date(t.date).toLocaleDateString(undefined, { weekday: 'short' })}
+                              {new Intl.DateTimeFormat(undefined, { timeZone: timezone, weekday: 'short' }).format(new Date(t.date))}
                             </span>
                             <span className="text-sm font-mono font-semibold text-foreground">
-                              {new Date(t.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                              {new Intl.DateTimeFormat(undefined, { timeZone: timezone, month: 'short', day: 'numeric' }).format(new Date(t.date))}
                             </span>
                             {t.hour !== null && (
                               <span className="text-[10px] text-muted-foreground font-mono inline-flex items-center gap-0.5">
                                 <Clock className="h-2.5 w-2.5" />
-                                {String(t.hour).padStart(2, '0')}:00
+                                {formatHourOfDay(t.hour)}
                               </span>
                             )}
                           </div>
@@ -320,17 +326,21 @@ function Stat({ label, value }: { label: string; value: string }) {
 function PlanBuilderDialog({
   open,
   analysisId,
+  timezone,
   onOpenChange,
   onBuilt,
 }: {
   open: boolean;
   analysisId: string;
+  timezone: string;
   onOpenChange: (open: boolean) => void;
   onBuilt: (plan: CampaignPlan) => void;
 }) {
   const [budget, setBudget] = useState('50000');
   const [horizon, setHorizon] = useState('30');
-  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
+  // Default start in the BUSINESS's wall-clock zone — using UTC near
+  // midnight can prefill yesterday and confuse the planner.
+  const [startDate, setStartDate] = useState(todayInTz(timezone));
   const [disabled, setDisabled] = useState<Set<DisabledCategory>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);

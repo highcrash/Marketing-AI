@@ -13,6 +13,7 @@ import type { DashboardSection } from './AnalysisDashboard';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatDateShort, formatDateTime, formatHourOfDay } from '@/lib/format-tz';
 
 import { ActivityPanel } from './ActivityPanel';
 import { AuditComparisonPanel } from './AuditComparisonPanel';
@@ -118,13 +119,14 @@ function OverviewSection({ result, drafts, completions, latestPlan, onJumpToRec 
     (s, d) => s + (d?.payload.pieces?.length ?? 0),
     0,
   );
+  const tz = result.business.timezone;
 
   return (
     <div className="space-y-6">
       <SectionHeading
         eyebrow="Audit"
         title={result.business.name}
-        subtitle={`${new Date(result.generatedAt).toLocaleString()} · ${result.model}`}
+        subtitle={`${formatDateTime(result.generatedAt, tz)} · ${result.model}`}
       />
 
       <Card>
@@ -169,7 +171,7 @@ function OverviewSection({ result, drafts, completions, latestPlan, onJumpToRec 
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <UpNext plan={latestPlan} onJumpToRec={onJumpToRec} />
+            <UpNext plan={latestPlan} timezone={tz} onJumpToRec={onJumpToRec} />
           </CardContent>
         </Card>
       )}
@@ -177,7 +179,15 @@ function OverviewSection({ result, drafts, completions, latestPlan, onJumpToRec 
   );
 }
 
-function UpNext({ plan, onJumpToRec }: { plan: CampaignPlan; onJumpToRec: (i: number) => void }) {
+function UpNext({
+  plan,
+  timezone,
+  onJumpToRec,
+}: {
+  plan: CampaignPlan;
+  timezone: string;
+  onJumpToRec: (i: number) => void;
+}) {
   const upcoming = useMemo(
     () =>
       plan.tasks
@@ -203,13 +213,9 @@ function UpNext({ plan, onJumpToRec }: { plan: CampaignPlan; onJumpToRec: (i: nu
           onClick={() => onJumpToRec(t.recIndex)}
           role="button"
         >
-          <span className="font-mono text-xs text-muted-foreground w-20 flex-shrink-0">
-            {new Date(t.date).toLocaleDateString(undefined, {
-              weekday: 'short',
-              month: 'short',
-              day: 'numeric',
-            })}
-            {t.hour !== null && ` · ${String(t.hour).padStart(2, '0')}:00`}
+          <span className="font-mono text-xs text-muted-foreground w-24 flex-shrink-0">
+            {formatDateShort(t.date, timezone)}
+            {t.hour !== null && ` · ${formatHourOfDay(t.hour)}`}
           </span>
           <span className="flex-1 truncate text-foreground">{t.title}</span>
           <Badge variant="muted" className="flex-shrink-0">
@@ -375,6 +381,7 @@ function PlanSection({
         onPlanCreated={onPlanCreated}
         onJumpToRec={onJumpToRec}
         recommendations={result.recommendations}
+        timezone={result.business.timezone}
       />
     </div>
   );
@@ -405,6 +412,7 @@ function RecsSection(
     onSegmentBlastSent,
     onToggleCompletion,
   } = props;
+  const tz = result.business.timezone;
 
   const filtered = useMemo(
     () =>
@@ -451,6 +459,7 @@ function RecsSection(
                     recIndex={recIndex}
                     draftRow={drafts[recIndex]}
                     planTasks={tasksByRec.get(recIndex) ?? []}
+                    timezone={tz}
                     sendingPieceKey={sendingPieceKey}
                     lastSendResultsByPiece={lastSendResultsByPiece}
                     completions={completions}
@@ -478,6 +487,7 @@ function RecsSection(
                 recIndex={recIndex}
                 draftRow={drafts[recIndex]}
                 planTasks={tasksByRec.get(recIndex) ?? []}
+                timezone={tz}
                 sendingPieceKey={sendingPieceKey}
                 lastSendResultsByPiece={lastSendResultsByPiece}
                 completions={completions}
@@ -504,6 +514,7 @@ interface RecCardSlotProps {
   recIndex: number;
   draftRow: AnalysisViewProps['drafts'][number] | undefined;
   planTasks: PlanTask[];
+  timezone: string;
   sendingPieceKey: string | null;
   lastSendResultsByPiece: Record<string, SmsSendRow | null>;
   completions: CompletionsByKey;
@@ -532,6 +543,7 @@ function RecCardSlot({
   recIndex,
   draftRow,
   planTasks,
+  timezone,
   sendingPieceKey,
   lastSendResultsByPiece,
   completions,
@@ -582,6 +594,7 @@ function RecCardSlot({
         rec={rec}
         draft={draftRow}
         planTasks={planTasks}
+        timezone={timezone}
         isDrafting={draftingIndex === recIndex}
         isRefining={!!draftRow && refiningDraftId === draftRow.id}
         isUpdatingStatus={!!draftRow && updatingStatusDraftId === draftRow.id}
@@ -628,7 +641,7 @@ function ActivitySection({ analysisId, result, drafts, activityRefreshKey }: Ana
         drafts={drafts}
         refreshKey={activityRefreshKey}
       />
-      <AuditComparisonPanel analysisId={analysisId} />
+      <AuditComparisonPanel analysisId={analysisId} timezone={result.business.timezone} />
     </div>
   );
 }

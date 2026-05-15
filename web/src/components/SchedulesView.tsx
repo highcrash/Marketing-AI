@@ -216,7 +216,17 @@ function RecurringRow({
   onDelete: () => void;
 }) {
   const cadence = `Every ${DAY_LABELS[item.dayOfWeek]} at ${String(item.hour).padStart(2, '0')}:${String(item.minute).padStart(2, '0')}`;
-  const next = paused ? '—' : new Date(item.nextFireAt).toLocaleString();
+  // Render nextFireAt in the schedule's saved zone — that's the wall
+  // clock the operator picked.
+  const next = paused
+    ? '—'
+    : new Intl.DateTimeFormat(undefined, {
+        timeZone: item.timezone,
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      }).format(new Date(item.nextFireAt));
   const summary = summarise(item.config, item.kind);
   return (
     <li className="flex items-center gap-3 px-3 py-3 text-[12px]">

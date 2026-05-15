@@ -7,6 +7,7 @@ import type { AuditComparison } from '@/lib/audit-compare';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { formatDateTime } from '@/lib/format-tz';
 
 const CATEGORY_LABEL: Record<string, string> = {
   acquisition: 'Acquisition',
@@ -19,7 +20,13 @@ const CATEGORY_LABEL: Record<string, string> = {
   brand: 'Brand',
 };
 
-export function AuditComparisonPanel({ analysisId }: { analysisId: string }) {
+export function AuditComparisonPanel({
+  analysisId,
+  timezone,
+}: {
+  analysisId: string;
+  timezone: string;
+}) {
   const [comparison, setComparison] = useState<AuditComparison | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -62,7 +69,7 @@ export function AuditComparisonPanel({ analysisId }: { analysisId: string }) {
         </CardTitle>
         <p className="text-[11px] text-muted-foreground">
           {comparison.daysBetween} day{comparison.daysBetween === 1 ? '' : 's'} ago ·{' '}
-          {new Date(comparison.previousGeneratedAt).toLocaleString()}
+          {formatDateTime(comparison.previousGeneratedAt, timezone)}
         </p>
       </CardHeader>
 

@@ -17,6 +17,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 import type { AnalysisResult, Recommendation } from './analyze';
+import { todayInTz } from '../format-tz';
 
 export type DisabledCategory =
   | 'video-production'
@@ -194,7 +195,10 @@ export async function runCampaignPlanning(
   options: PlanOptions,
 ): Promise<CampaignPlan> {
   const model = options.model ?? process.env.ANTHROPIC_MODEL ?? 'claude-opus-4-7';
-  const startDate = options.startDate ?? new Date().toISOString().slice(0, 10);
+  // Default startDate to "today" in the BUSINESS's wall-clock zone — for
+  // an Asia/Dhaka business the UTC date can be a day behind near
+  // midnight, which would make week-1 tasks land in the past.
+  const startDate = options.startDate ?? todayInTz(analysis.business.timezone);
 
   const disabledBlock =
     options.disabledCategories.length > 0

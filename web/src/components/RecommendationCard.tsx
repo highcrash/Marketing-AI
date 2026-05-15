@@ -8,6 +8,7 @@ import type { PieceCompletionRow } from '@/lib/piece-completions';
 import type { PlanTask } from '@/lib/plan-types';
 import type { SmsSendRow } from '@/lib/sms-sends';
 import { computeRecStatus } from '@/lib/rec-status';
+import { formatDateShort, formatHourOfDay } from '@/lib/format-tz';
 import { cn } from '@/lib/utils';
 
 import { Badge } from '@/components/ui/badge';
@@ -29,6 +30,7 @@ export function RecommendationCard({
   rec,
   draft,
   planTasks,
+  timezone,
   isDrafting,
   isRefining,
   isUpdatingStatus,
@@ -48,6 +50,8 @@ export function RecommendationCard({
   /// Plan tasks that target this rec (from the latest plan). Empty
   /// array when there's no plan or this rec isn't in it.
   planTasks?: PlanTask[];
+  /// IANA timezone for plan-task date rendering.
+  timezone: string;
   isDrafting: boolean;
   isRefining: boolean;
   isUpdatingStatus: boolean;
@@ -123,12 +127,8 @@ export function RecommendationCard({
                     className="flex items-center gap-2 px-2 py-1 bg-primary/5 border border-primary/30 text-foreground"
                   >
                     <span className="font-mono text-muted-foreground tabular-nums">
-                      {new Date(t.date).toLocaleDateString(undefined, {
-                        weekday: 'short',
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                      {t.hour !== null && ` · ${String(t.hour).padStart(2, '0')}:00`}
+                      {formatDateShort(t.date, timezone)}
+                      {t.hour !== null && ` · ${formatHourOfDay(t.hour)}`}
                     </span>
                     <span className="text-foreground/90 truncate flex-1">{t.title}</span>
                     <span className="font-mono text-muted-foreground flex-shrink-0">
@@ -192,6 +192,7 @@ export function RecommendationCard({
         <div className="border-t border-border bg-secondary/30">
           <DraftView
             draft={draft}
+            timezone={timezone}
             isRefining={isRefining}
             isUpdatingStatus={isUpdatingStatus}
             sendingPieceIndex={sendingPieceIndex}
