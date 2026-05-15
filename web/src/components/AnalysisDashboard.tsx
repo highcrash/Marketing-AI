@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   Calendar,
   History,
+  Inbox as InboxIcon,
   LayoutGrid,
   ListTodo,
   Loader2,
@@ -31,8 +32,9 @@ import type { DraftRow } from '@/lib/drafts';
 import type { SmsSendRow } from '@/lib/sms-sends';
 import type { CampaignPlan } from '@/lib/plan-types';
 import { formatDateTime } from '@/lib/format-tz';
+import { buildInbox } from '@/lib/inbox';
 
-export type DashboardSection = 'overview' | 'audience' | 'plan' | 'recs' | 'activity';
+export type DashboardSection = 'inbox' | 'overview' | 'audience' | 'plan' | 'recs' | 'activity';
 
 const REC_CATEGORIES: Array<{ id: Recommendation['category']; label: string }> = [
   { id: 'acquisition', label: 'Acquisition' },
@@ -83,9 +85,9 @@ export function AnalysisDashboard({
   const bumpActivity = () => setActivityRefreshKey((k) => k + 1);
 
   /// Which dashboard section the user is looking at. Sidebar nav
-  /// drives this; defaults to 'overview' on fresh load and on every
-  /// analysis switch.
-  const [section, setSection] = useState<DashboardSection>('overview');
+  /// drives this; defaults to 'inbox' (the work queue) on fresh load
+  /// and on every analysis switch.
+  const [section, setSection] = useState<DashboardSection>('inbox');
   /// Within the Recommendations section, which category the user is
   /// filtering to. 'all' shows every rec.
   const [recCategory, setRecCategory] = useState<'all' | Recommendation['category']>('all');
@@ -123,6 +125,18 @@ export function AnalysisDashboard({
     if (current) void loadPlans(current.id);
     else setPlans([]);
   }, [current, loadPlans]);
+
+  /// Inbox queue size for the sidebar badge. Re-derived whenever the
+  /// underlying analysis state changes.
+  const inboxCount = useMemo(() => {
+    if (!current) return 0;
+    return buildInbox({
+      result: current.result,
+      drafts: current.drafts,
+      completions: current.completions,
+      latestPlan,
+    }).length;
+  }, [current, latestPlan]);
 
   /// Counts per rec category for the sidebar sub-nav.
   const categoryCounts = useMemo(() => {
@@ -164,7 +178,7 @@ export function AnalysisDashboard({
   // Reset section when switching analyses so the user doesn't land on
   // a deep page they weren't expecting.
   useEffect(() => {
-    setSection('overview');
+    setSection('inbox');
     setRecCategory('all');
   }, [current?.id]);
 
@@ -544,6 +558,13 @@ export function AnalysisDashboard({
             </CardHeader>
             <CardContent className="p-2 space-y-0.5">
               <SidebarNav
+                icon={InboxIcon}
+                label="Inbox"
+                active={section === 'inbox'}
+                onClick={() => setSection('inbox')}
+                badge={inboxCount > 0 ? `${inboxCount}` : undefined}
+              />
+              <SidebarNav
                 icon={LayoutGrid}
                 label="Overview"
                 active={section === 'overview'}
@@ -600,57 +621,12 @@ export function AnalysisDashboard({
           </Card>
         )}
 
-        <GoalsCard />
-        <TimezoneCard />
-        <OperationalStatsCard refreshKey={activityRefreshKey} />
-
-        <Card>
-          <CardHeader className="py-3 flex-row items-center gap-2">
-            <History className="h-3.5 w-3.5 text-muted-foreground" />
-            <CardTitle className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-semibold">
-              Past runs · {list.length}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-2">
-            {list.length === 0 ? (
-              <p className="text-xs text-muted-foreground px-2 py-2">No runs yet.</p>
-            ) : (
-              <ul className="space-y-1">
-                {list.slice(0, 5).map((item) => {
-                  const isActive = current?.id === item.id;
-                  return (
-                    <li key={item.id}>
-                      <button
-                        onClick={() => loadAnalysis(item.id)}
-                        className={cn(
-                          'w-full text-left px-3 py-2 text-xs border transition-colors',
-                          isActive
-                            ? 'border-primary bg-primary/10 text-foreground'
-                            : 'border-border text-muted-foreground hover:border-primary hover:text-foreground',
-                        )}
-                      >
-                        <div className="font-medium text-foreground">
-                          {formatDateTime(
-                            item.generatedAt,
-                            current?.result.business.timezone ?? 'UTC',
-                          )}
-                        </div>
-                        <div className="text-[11px] text-muted-foreground mt-0.5">
-                          {item.recommendationCount} recs · {item.model.replace('claude-', '')}
-                        </div>
-                      </button>
-                    </li>
-                  );
-                })}
-                {list.length > 5 && (
-                  <li className="text-[10px] text-muted-foreground px-3 pt-1">
-                    + {list.length - 5} older
-                  </li>
-                )}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+        <SecondaryPanel
+          activityRefreshKey={activityRefreshKey}
+          list={list}
+          current={current}
+          loadAnalysis={loadAnalysis}
+        />
       </aside>
 
       <section ref={contentRef} className="min-w-0">
@@ -699,6 +675,90 @@ export function AnalysisDashboard({
         ) : null}
       </section>
     </div>
+  );
+}
+
+/// Collapsible disclosure that hides Goals/Timezone/Op-stats/Past-runs
+/// behind a single "More" toggle. Default-collapsed so the eye lands on
+/// the primary Sections nav above.
+function SecondaryPanel({
+  activityRefreshKey,
+  list,
+  current,
+  loadAnalysis,
+}: {
+  activityRefreshKey: number;
+  list: AnalysisListItem[];
+  current: Current | null;
+  loadAnalysis: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Card>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-muted/40 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <History className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-semibold">
+            Settings & history
+          </span>
+        </div>
+        <span className="text-[10px] text-muted-foreground tabular-nums">
+          {list.length} run{list.length === 1 ? '' : 's'} {open ? '−' : '+'}
+        </span>
+      </button>
+      {open && (
+        <div className="border-t border-border p-2 space-y-3">
+          <GoalsCard />
+          <TimezoneCard />
+          <OperationalStatsCard refreshKey={activityRefreshKey} />
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground font-semibold px-2 py-1">
+              Past runs · {list.length}
+            </p>
+            {list.length === 0 ? (
+              <p className="text-xs text-muted-foreground px-2 py-2">No runs yet.</p>
+            ) : (
+              <ul className="space-y-1">
+                {list.slice(0, 5).map((item) => {
+                  const isActive = current?.id === item.id;
+                  return (
+                    <li key={item.id}>
+                      <button
+                        onClick={() => loadAnalysis(item.id)}
+                        className={cn(
+                          'w-full text-left px-3 py-2 text-xs border transition-colors',
+                          isActive
+                            ? 'border-primary bg-primary/10 text-foreground'
+                            : 'border-border text-muted-foreground hover:border-primary hover:text-foreground',
+                        )}
+                      >
+                        <div className="font-medium text-foreground">
+                          {formatDateTime(
+                            item.generatedAt,
+                            current?.result.business.timezone ?? 'UTC',
+                          )}
+                        </div>
+                        <div className="text-[11px] text-muted-foreground mt-0.5">
+                          {item.recommendationCount} recs · {item.model.replace('claude-', '')}
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+                {list.length > 5 && (
+                  <li className="text-[10px] text-muted-foreground px-3 pt-1">
+                    + {list.length - 5} older
+                  </li>
+                )}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }
 

@@ -18,6 +18,7 @@ import { formatDateShort, formatDateTime, formatHourOfDay } from '@/lib/format-t
 import { ActivityPanel } from './ActivityPanel';
 import { AuditComparisonPanel } from './AuditComparisonPanel';
 import { CampaignPlanCard } from './CampaignPlanCard';
+import { InboxView } from './InboxView';
 import { RecommendationCard } from './RecommendationCard';
 
 const EMPTY_SENDS: Record<number, SmsSendRow | null> = {};
@@ -99,12 +100,38 @@ export function AnalysisView(props: AnalysisViewProps) {
 
   return (
     <div className="space-y-6">
+      {section === 'inbox' && <InboxSection {...props} />}
       {section === 'overview' && <OverviewSection {...props} />}
       {section === 'audience' && <AudienceSection {...props} />}
       {section === 'plan' && <PlanSection {...props} tasksByRec={tasksByRec} />}
       {section === 'recs' && <RecsSection {...props} tasksByRec={tasksByRec} />}
       {section === 'activity' && <ActivitySection {...props} />}
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// INBOX (work queue — the new default landing)
+
+function InboxSection({
+  result,
+  drafts,
+  completions,
+  latestPlan,
+  draftingIndex,
+  onDraft,
+  onJumpToRec,
+}: AnalysisViewProps) {
+  return (
+    <InboxView
+      result={result}
+      drafts={drafts}
+      completions={completions}
+      latestPlan={latestPlan}
+      draftingIndex={draftingIndex}
+      onDraft={onDraft}
+      onOpenRec={onJumpToRec}
+    />
   );
 }
 
