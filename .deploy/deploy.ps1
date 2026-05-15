@@ -51,6 +51,17 @@ try {
   Copy-Item -Path (Join-Path $webRoot 'public') -Destination (Join-Path $standaloneWeb 'public') -Recurse -Force
   Copy-Item -Path (Join-Path $webRoot 'prisma') -Destination (Join-Path $standaloneWeb 'prisma') -Recurse -Force
 
+  # marketingskills submodule lives at <repoRoot>/skills (top-level).
+  # The analyze pipeline reads SKILL.md files from <cwd>/skills/skills/.
+  # Standalone trace can't reach files outside the web/ workspace, so
+  # we copy them in here. ~1.5 MB.
+  $skillsSrc = Join-Path $repoRoot 'skills\skills'
+  if (Test-Path $skillsSrc) {
+    Copy-Item -Path $skillsSrc -Destination (Join-Path $standaloneWeb 'skills\skills') -Recurse -Force
+  } else {
+    Write-Warning "skills/skills not found at $skillsSrc - audits will fail until skills are bundled"
+  }
+
   # Strip the Windows Prisma query engine -- we only need the Linux
   # binary on the droplet. Saves ~21 MB and trims a binary that won't
   # run on Ubuntu anyway.

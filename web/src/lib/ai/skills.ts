@@ -6,6 +6,7 @@
  * across analysis runs.
  */
 
+import { existsSync } from 'node:fs';
 import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,8 +26,21 @@ export interface Skill {
   body: string;
 }
 
-const here = dirname(fileURLToPath(import.meta.url));
-const SKILLS_ROOT = resolve(here, '../../../../skills/skills');
+/// Resolve SKILLS_ROOT with a fallback chain:
+///   1. SKILLS_ROOT env var if set (handy for CI / Docker)
+///   2. <cwd>/skills/skills — what the production deploy ships
+///   3. <compiled-file>/../../../../skills/skills — the dev layout
+///      where the next/font build leaves the file deep in .next/server
+function resolveSkillsRoot(): string {
+  const fromEnv = process.env.SKILLS_ROOT;
+  if (fromEnv && existsSync(fromEnv)) return fromEnv;
+  const fromCwd = resolve(process.cwd(), 'skills/skills');
+  if (existsSync(fromCwd)) return fromCwd;
+  const here = dirname(fileURLToPath(import.meta.url));
+  return resolve(here, '../../../../skills/skills');
+}
+
+const SKILLS_ROOT = resolveSkillsRoot();
 
 async function readSkillDir(slug: string): Promise<Skill | null> {
   const file = join(SKILLS_ROOT, slug, 'SKILL.md');
